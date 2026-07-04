@@ -103,6 +103,7 @@ export function useAudioPlayer(contextMode?: string) {
     const audioRef = useRef<HTMLVideoElement>(getSharedAudio())
     const engineRef = useRef<AudioEngine | null>(_sharedEngine)
     const isSwitchingTrackRef = useRef(false)
+    const isPlaybackPendingRef = useRef(false)
     const playRequestIdRef = useRef(0)
 
     
@@ -243,16 +244,22 @@ export function useAudioPlayer(contextMode?: string) {
         }
 
         try {
+            isPlaybackPendingRef.current = true
             await engineRef.current?.resume()
             await waitForPlayable(audio)
-            if (!isCurrentRequest()) return
+            if (!isCurrentRequest()) {
+                isPlaybackPendingRef.current = false
+                return
+            }
             await audio.play()
             if (isCurrentRequest()) {
+                isPlaybackPendingRef.current = false
                 setIsPlaying(!audio.paused && !audio.ended)
             }
         } catch (e) {
             console.error("Playback failed:", e)
             if (isCurrentRequest()) {
+                isPlaybackPendingRef.current = false
                 setIsPlaying(false)
             }
         } finally {
@@ -284,11 +291,14 @@ export function useAudioPlayer(contextMode?: string) {
             nextTrack = currentTrack
             audioRef.current.currentTime = 0
             try {
+                isPlaybackPendingRef.current = true
                 await engineRef.current?.resume()
                 await audioRef.current.play()
+                isPlaybackPendingRef.current = false
                 setIsPlaying(!audioRef.current.paused && !audioRef.current.ended)
             } catch (e) {
                 console.error("Playback failed:", e)
+                isPlaybackPendingRef.current = false
                 setIsPlaying(false)
             }
             return
@@ -377,9 +387,13 @@ export function useAudioPlayer(contextMode?: string) {
                     }, 1000)
                 })
         }
-        const onPlay = () => setIsPlaying(true)
+        const onPlay = () => {
+            isPlaybackPendingRef.current = false
+            setIsPlaying(true)
+        }
         const onPause = () => {
-            if (isSwitchingTrackRef.current) return
+            if (isSwitchingTrackRef.current || isPlaybackPendingRef.current) return
+            if (!audio.paused) return
             setIsPlaying(false)
         }
 
