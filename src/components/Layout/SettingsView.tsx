@@ -29,7 +29,7 @@ const ScanProgress = () => {
                 <div style={{ width: `${percentage}%`, height: '100%', background: 'var(--accent)', transition: 'width 0.3s ease' }}></div>
             </div>
             <div style={{ fontSize: '12px', marginTop: '8px', color: '#4ade80' }}>
-                成功上傳: {scanData.success}
+                成功取得封面: {scanData.success}
             </div>
         </div>
     );

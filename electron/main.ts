@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Notification, nativeImage, screen, protocol, net } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Notification, screen, protocol, net } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import path from 'node:path'
@@ -10,6 +10,7 @@ import * as mm from 'music-metadata'
 import { DiscordBotManager } from './discordBot'
 import { DiscordRPCManager } from './discordRPC'
 import { searchArtistImage } from './utils/artistSearch'
+import { searchTrackArtwork } from './utils/artworkSearch'
 import { PartyRoomService, type PartyCommand } from './partyRoom'
 
 // Register custom standard protocol for local media playback to bypass CORS restrictions for Web Audio API
@@ -425,65 +426,11 @@ app.whenReady().then(() => {
     imageCache.set(key, value);
   }
 
-  async function uploadToCloud(artworkUrl: string): Promise<string | null> {
-    try {
-      let buffer: Buffer;
-
-      
-      if (artworkUrl.startsWith('data:')) {
-        const base64Data = artworkUrl.split('base64,')[1];
-        buffer = Buffer.from(base64Data, 'base64');
-      } else if (artworkUrl.startsWith('media://') || artworkUrl.startsWith('file://')) {
-        let realPath = artworkUrl.replace('media://', '').replace('file://', '');
-        realPath = decodeURIComponent(realPath);
-        if (realPath.startsWith('/') && process.platform === 'win32') realPath = realPath.substring(1);
-        
-        try {
-          buffer = await fs.readFile(realPath);
-        } catch(e) {
-          return null;
-        }
-      } else {
-        return null;
-      }
-
-      
-      const image = nativeImage.createFromBuffer(buffer);
-      if (image.isEmpty()) return null;
-      
-      const resizedBuffer = image.resize({
-        width: 512,
-        height: 512,
-        quality: 'better'
-      }).toJPEG(80);
-
-      
-      
-      
-      const form = new FormData();
-      const blob = new Blob([new Uint8Array(resizedBuffer)], { type: 'image/jpeg' });
-      form.append('file', blob, 'cover.jpg');
-
-      const response = await fetch('https://telegra.ph/upload', {
-        method: 'POST',
-        body: form
-      });
-
-      const res: any = await response.json();
-      if (Array.isArray(res) && res[0] && res[0].src) {
-        return `https://telegra.ph${res[0].src}`;
-      }
-    } catch (e) {
-      console.error('[CloudUpload] Failed:', e);
-    }
-    return null;
-  }
-
   ipcMain.handle('discord:updatePresence', async (_, data) => {
     const cacheKey = `${data.title}-${data.artist}`;
-    let artworkUrl = 'logo'; 
+    let artworkUrl = 'logo';
 
-    
+
     const cached = getFromImageCache(cacheKey);
     if (cached) {
         artworkUrl = cached;
@@ -491,22 +438,22 @@ app.whenReady().then(() => {
         artworkUrl = data.artworkUrl;
     }
 
-    
+
     discordRPC.setActivity({ ...data, artworkUrl }).catch(() => {});
 
-    
-    if (artworkUrl === 'logo' && data.artworkUrl) {
-        
+    // No usable artwork URL yet — look the track up on iTunes/Deezer in the
+    // background and refresh the presence once found.
+    if (artworkUrl === 'logo' && (data.title || data.artist)) {
         (async () => {
              try {
-                const uploadedUrl = await uploadToCloud(data.artworkUrl);
-                if (uploadedUrl) {
-                    setImageCache(cacheKey, uploadedUrl);
-                    
-                    discordRPC.setActivity({ ...data, artworkUrl: uploadedUrl }).catch(() => {});
+                const foundUrl = await searchTrackArtwork(data.title, data.artist);
+                if (foundUrl) {
+                    setImageCache(cacheKey, foundUrl);
+
+                    discordRPC.setActivity({ ...data, artworkUrl: foundUrl }).catch(() => {});
                 }
              } catch (e) {
-                 console.error('[DiscordRPC] Background upload failed:', e);
+                 console.error('[DiscordRPC] Background artwork lookup failed:', e);
              }
         })();
     }
@@ -546,37 +493,25 @@ app.whenReady().then(() => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       try {
-        const metadata = await mm.parseFile(file);
+        const metadata = await mm.parseFile(file, { skipCovers: true });
         const title = metadata.common.title;
         const artist = metadata.common.artist;
-        
+
         if (title && artist) {
           const cacheKey = `${title}-${artist}`;
-          if (!getFromImageCache(cacheKey) && metadata.common.picture && metadata.common.picture.length > 0) {
-            
-            const pic = metadata.common.picture[0];
-            const buffer = Buffer.from(pic.data);
-            
-            
-            const { FormData } = require('formdata-node');
-            const { Blob } = require('fetch-blob');
-            const form = new FormData();
-            const blob = new Blob([buffer], { type: pic.format || 'image/jpeg' });
-            form.append('file', blob, 'cover.jpg');
-
-            const res = await fetch('https://telegra.ph/upload', { method: 'POST', body: form });
-            const json: any = await res.json();
-            if (Array.isArray(json) && json[0] && json[0].src) {
-              setImageCache(cacheKey, `https://telegra.ph${json[0].src}`);
+          if (!getFromImageCache(cacheKey)) {
+            const foundUrl = await searchTrackArtwork(title, artist);
+            if (foundUrl) {
+              setImageCache(cacheKey, foundUrl);
               successCount++;
             }
           }
         }
       } catch (e) {
-        console.error(`[PreUpload] Error parsing ${file}:`, e);
+        console.error(`[ArtworkPreload] Error handling ${file}:`, e);
       }
 
-      
+
       win?.webContents.send('discord:scanProgress', {
         current: i + 1,
         total: files.length,
