@@ -15,6 +15,8 @@
   "directories": {
     "output": "release/${version}"
   },
+  // Free ad-hoc signing for mac builds when no Developer ID cert is set
+  "afterPack": "scripts/afterPack.cjs",
   "files": [
     "dist",
     "dist-electron"

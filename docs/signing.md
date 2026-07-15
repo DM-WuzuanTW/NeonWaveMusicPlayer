@@ -1,7 +1,18 @@
 # 程式碼簽名(Code Signing)設定指南
 
-目前 Release 產出的是**未簽名**版本:Windows 會跳 SmartScreen 警告、macOS 需要右鍵開啟。
+這裡講的都是**檔案簽名**(安裝檔/執行檔的數位簽章),與上架商店無關。
 Release workflow 已內建簽名支援 — **只要把憑證放進 GitHub Secrets 就會自動簽名**,不需要改任何程式或 workflow。
+
+## 先懂一件事:為什麼「免費簽名」沒有用
+
+簽名要能消除系統警告,憑證必須由**作業系統信任的機構**簽發:
+
+- Windows 自簽(self-signed)憑證 → SmartScreen 照樣顯示「未知的發行者」,與未簽名幾乎無異
+- macOS 沒有 Developer ID 的簽名 → Gatekeeper 照樣攔
+
+**唯一的免費例外**:macOS 的 **ad-hoc 簽名**(已內建於本專案 `scripts/afterPack.cjs`,自動套用)。
+它不能消除警告,但在 Apple Silicon 上能把「App 已損毀,無法打開」硬擋降級為
+「無法驗證開發者」→ 使用者右鍵 → 打開即可,不需要終端機指令。
 
 ## macOS(必須付費,無免費方案)
 
