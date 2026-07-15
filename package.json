@@ -4,6 +4,11 @@
   "version": "6.6.5",
   "description": "A modern, high-fidelity music player with 8D spatial audio effects.",
   "author": "wu-zuan",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/wu-zuan/NeonWaveMusicPlayer.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "npm run clean && vite",
