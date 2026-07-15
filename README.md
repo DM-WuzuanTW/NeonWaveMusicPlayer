@@ -31,6 +31,7 @@ Electron + React + TypeScript + Web Audio API。
 > macOS 版未經 Apple 簽章,首次開啟請在 App 上按右鍵 → 打開;或執行
 > `xattr -cr /Applications/NeonWave.app`。
 > Linux AppImage 需要 `libfuse2`(`chmod +x` 後直接執行)。
+> 簽名設定方式見 [docs/signing.md](docs/signing.md)。
 
 ## 開發
 

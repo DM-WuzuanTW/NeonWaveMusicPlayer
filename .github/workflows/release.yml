@@ -43,5 +43,20 @@ jobs:
         run: npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # No Apple signing certificate — build unsigned artifacts
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+          # --- Code signing (optional) --------------------------------------
+          # Unsigned builds are produced when these secrets are absent.
+          # See docs/signing.md for how to obtain certificates and which
+          # secrets to configure — no workflow change needed afterwards.
+          #
+          # macOS: base64 .p12 Developer ID Application cert + password
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          # macOS notarization (Apple ID + app-specific password + team id)
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Windows: base64 .pfx code-signing cert + password
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          # Only auto-discover a signing identity when a mac cert is provided
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.MAC_CSC_LINK != '' && 'true' || 'false' }}
