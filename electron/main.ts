@@ -724,10 +724,9 @@ while ($true) {
         try {
             const version = app.getVersion()
             if (version && version !== '0.0.0') return version
-            const pkg = require('../package.json')
-            return pkg.version || '6.1.3'
+            return require('../package.json').version || version
         } catch (e) {
-            return '6.1.3'
+            return app.getVersion()
         }
     })
 
