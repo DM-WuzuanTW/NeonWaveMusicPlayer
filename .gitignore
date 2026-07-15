@@ -34,3 +34,15 @@ yt-dlp
 # Test/debug files
 *.nwp
 debug.log
+
+# Dev scratch space & local AI tooling state
+scratch/
+.claude/
+
+# Secrets — never commit these
+.env
+.env.*
+*.p12
+*.pfx
+*.mobileprovision
+*.keychain
