@@ -10,6 +10,8 @@
     "**/node_modules/ffmpeg-static/**"
   ],
   "productName": "NeonWave",
+  // 694x694 png — electron-builder converts to ico/icns per platform
+  "icon": "icon.png",
   "directories": {
     "output": "release/${version}"
   },
@@ -18,10 +20,15 @@
     "dist-electron"
   ],
   "mac": {
+    // zip is required for electron-updater on macOS; dmg is for humans.
+    // arm64 only: CI runners are Apple Silicon and native deps (opus) are
+    // installed for the host arch.
     "target": [
-      "dmg"
+      { "target": "dmg", "arch": ["arm64"] },
+      { "target": "zip", "arch": ["arm64"] }
     ],
-    "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+    "category": "public.app-category.music",
+    "artifactName": "${productName}-Mac-${version}-${arch}.${ext}"
   },
   "win": {
     "target": [
@@ -44,6 +51,8 @@
     "target": [
       "AppImage"
     ],
+    "category": "AudioVideo",
+    "maintainer": "wu-zuan",
     "artifactName": "${productName}-Linux-${version}.${ext}"
   },
   "publish": [

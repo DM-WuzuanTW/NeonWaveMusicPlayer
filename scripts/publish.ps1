@@ -1,54 +1,38 @@
 $ErrorActionPreference = "Stop"
 
-# 1. Read Version
-$package = Get-Content package.json | ConvertFrom-Json
-$version = $package.version
+# Release flow: bump version, push a tag, and let GitHub Actions build and
+# publish the Windows / macOS / Linux installers (.github/workflows/release.yml).
+# No local build is required anymore.
 
-Write-Host "🚀 Starting release process for NeonWave v$version..." -ForegroundColor Cyan
+# 1. Bump patch version
+$version = node scripts/increment_version.cjs
+if (-not $version) {
+    Write-Host "Version bump failed." -ForegroundColor Red
+    exit 1
+}
 
-# 2. Git Sync
-Write-Host "📦 Syncing with GitHub..." -ForegroundColor Yellow
-git add .
+Write-Host "Releasing NeonWave v$version..." -ForegroundColor Cyan
+
+# 2. Commit and push
+git add package.json
 try {
     git commit -m "chore: release v$version"
-    Write-Host "   Commit created." -ForegroundColor Gray
 }
 catch {
     Write-Host "   Nothing to commit." -ForegroundColor Gray
 }
+git push origin main
 
-git push
-Write-Host "   Code pushed to main." -ForegroundColor Green
-
-# 3. Handle Tag
+# 3. Tag and push (this triggers the Release workflow)
 if ($(git tag -l "v$version")) {
-    Write-Host "⚠️ Tag v$version already exists. Skipping tag creation." -ForegroundColor Yellow
+    Write-Host "Tag v$version already exists. Skipping tag creation." -ForegroundColor Yellow
 }
 else {
     git tag "v$version"
-    git push origin "v$version"
-    Write-Host "🏷️  Tag v$version pushed." -ForegroundColor Green
 }
+git push origin "v$version"
 
-# 4. Build & Publish
-Write-Host "🔨 Building and Publishing (this may take a few minutes)..." -ForegroundColor Cyan
-
-# Run checks and build
-npm run typecheck
-npx vite build
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Build failed. Aborting." -ForegroundColor Red
-    exit
-}
-
-# Package and Publish
-# Ensure GH_TOKEN is available in env or via cli logic normally, but here we assume local setup is good.
-npx electron-builder --publish always
-
-if ($LASTEXITCODE -ne 0) {
-    Write-Host "❌ Packaging/Publishing failed." -ForegroundColor Red
-    exit
-}
-
-Write-Host "`n✅ Release v$version Published Successfully!" -ForegroundColor Green
+Write-Host ""
+Write-Host "Tag v$version pushed. GitHub Actions is now building Windows/macOS/Linux." -ForegroundColor Green
+Write-Host "Progress: https://github.com/wu-zuan/NeonWaveMusicPlayer/actions" -ForegroundColor Cyan
+Write-Host "Release:  https://github.com/wu-zuan/NeonWaveMusicPlayer/releases/tag/v$version" -ForegroundColor Cyan

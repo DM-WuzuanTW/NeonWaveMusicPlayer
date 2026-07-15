@@ -1,0 +1,47 @@
+name: Release
+
+# Builds Windows / macOS / Linux installers with electron-builder and
+# publishes them to the GitHub release for the pushed tag.
+#
+# Trigger: push a tag like v6.7.0 (scripts/publish.ps1 does this for you),
+# or run manually from the Actions tab.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Build (renderer + electron main)
+        run: npm run clean && npx vite build
+
+      - name: Package and publish
+        run: npx electron-builder --publish always
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No Apple signing certificate — build unsigned artifacts
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
