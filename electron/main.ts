@@ -1461,52 +1461,6 @@ app.whenReady().then(() => {
       }
     }
 
-    // Case 4: "Artist - [Title/EnglishTitle]" or "Artist - Title [Subtitle]"
-    // Extract title from square brackets first
-    if (!titleVal) {
-      const bracketMatch = rawStr.match(/(?:^|[-–—]\s*)(?:[^\[\]]+?)?\[([^\]]+)\]/)
-      if (bracketMatch) {
-        const bracketContent = bracketMatch[1]
-        // Extract Chinese title from bracket (e.g., "失語者/Aphasia" -> "失語者")
-        const chineseMatch = bracketContent.match(/([\u4e00-\u9fa5]+)/)
-        if (chineseMatch) {
-          titleVal = chineseMatch[1]
-        } else {
-          titleVal = bracketContent.split(/[\/\-–—]/)[0].trim()
-        }
-        
-        // Extract artist from before the bracket
-        const beforeBracket = rawStr.substring(0, rawStr.indexOf('[')).trim()
-        const artistMatch = beforeBracket.match(/([^\s-–—]+(?:\s+[A-Za-z]+)*)$/)
-        if (artistMatch) {
-          artistVal = artistMatch[1].trim()
-        }
-      }
-    }
-
-    // Case 4: "Artist - [Title/EnglishTitle]" or "Artist - Title [Subtitle]"
-    // Extract title from square brackets first
-    if (!titleVal) {
-      const bracketMatch = rawStr.match(/(?:^|[-–—]\s*)(?:[^\[\]]+?)?\[([^\]]+)\]/)
-      if (bracketMatch) {
-        const bracketContent = bracketMatch[1]
-        // Extract Chinese title from bracket (e.g., "失語者/Aphasia" -> "失語者")
-        const chineseMatch = bracketContent.match(/([\u4e00-\u9fa5]+)/)
-        if (chineseMatch) {
-          titleVal = chineseMatch[1]
-        } else {
-          titleVal = bracketContent.split(/[\/\-–—]/)[0].trim()
-        }
-        
-        // Extract artist from before the bracket
-        const beforeBracket = rawStr.substring(0, rawStr.indexOf('[')).trim()
-        const artistMatch = beforeBracket.match(/([^\s-–—]+(?:\s+[A-Za-z]+)*)$/)
-        if (artistMatch) {
-          artistVal = artistMatch[1].trim()
-        }
-      }
-    }
-
     // Case 4: standard dash splitting
     if (!titleVal) {
       try {
