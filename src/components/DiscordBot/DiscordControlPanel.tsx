@@ -64,9 +64,12 @@ export const DiscordControlPanel: React.FC = () => {
     const [selectedGuild, setSelectedGuild] = useState<DiscordGuild | null>(null)
     const [activeChannel, setActiveChannel] = useState<DiscordChannel | null>(null)
 
-    
+
     const [savedBots, setSavedBots] = useState<SavedBot[]>([])
     const [isAddingNew, setIsAddingNew] = useState(false)
+
+    // Live playback state of the bot, polled while on the connected screen
+    const [botPlayback, setBotPlayback] = useState<{ isPlaying: boolean; title: string; artist: string } | null>(null)
 
     
     const [modal, setModal] = useState({
@@ -426,10 +429,38 @@ export const DiscordControlPanel: React.FC = () => {
             }
         }
         checkStatus(true)
-        
+
         const interval = setInterval(() => checkStatus(false), 15000)
         return () => clearInterval(interval)
     }, [])
+
+    // Poll bot playback state (drives the equalizer animation) — connected screen only
+    useEffect(() => {
+        if (step !== 4) {
+            setBotPlayback(null)
+            return
+        }
+        let stopped = false
+        const tick = async () => {
+            try {
+                const status = await window.ipcRenderer.invoke('discord:status')
+                if (stopped) return
+                setBotPlayback({
+                    isPlaying: !!status.isPlaying,
+                    title: status.nowPlaying?.title || '',
+                    artist: status.nowPlaying?.artist || ''
+                })
+            } catch {
+                // Keep the last known state on transient IPC failures.
+            }
+        }
+        tick()
+        const interval = setInterval(tick, 2000)
+        return () => {
+            stopped = true
+            clearInterval(interval)
+        }
+    }, [step])
 
     
 
@@ -632,6 +663,34 @@ export const DiscordControlPanel: React.FC = () => {
                     <Server size={14} /> {selectedGuild?.name}
                     <span>•</span>
                     <Volume2 size={14} /> {activeChannel?.name}
+                </div>
+            </div>
+
+            {/* Now Playing visualizer */}
+            <div className={`${styles.nowPlayingBox} ${botPlayback?.isPlaying ? styles.isPlaying : ''}`}>
+                <Disc
+                    size={28}
+                    className={`${styles.nowPlayingDisc} ${botPlayback?.isPlaying ? styles.spinning : ''}`}
+                />
+                <div className={styles.nowPlayingText}>
+                    {botPlayback?.title ? (
+                        <>
+                            <div className={styles.nowPlayingTitle}>{botPlayback.title}</div>
+                            <div className={styles.nowPlayingSub}>
+                                {botPlayback.isPlaying
+                                    ? (botPlayback.artist || '正在串流到語音頻道')
+                                    : '已暫停'}
+                            </div>
+                        </>
+                    ) : (
+                        <>
+                            <div className={styles.nowPlayingTitle}>等待播放中</div>
+                            <div className={styles.nowPlayingSub}>在主播放器點播歌曲，機器人就會開始串流</div>
+                        </>
+                    )}
+                </div>
+                <div className={`${styles.equalizer} ${botPlayback?.isPlaying ? styles.playing : ''}`}>
+                    <span /><span /><span /><span /><span />
                 </div>
             </div>
 
