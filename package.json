@@ -6,8 +6,10 @@
   "author": "wu-zuan",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
+    "dev": "npm run clean && vite",
+    "clean": "node scripts/clean.cjs",
+    "build": "npm run clean && tsc && vite build && electron-builder",
+    "build:dir": "npm run clean && tsc && vite build && electron-builder --dir",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
