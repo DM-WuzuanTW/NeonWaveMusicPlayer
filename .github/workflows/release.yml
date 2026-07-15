@@ -40,7 +40,18 @@ jobs:
         run: npm run clean && npx vite build
 
       - name: Package and publish
-        run: npx electron-builder --publish always
+        shell: bash
+        # Secrets that are not configured render as empty strings, and
+        # electron-builder treats a present-but-empty CSC_LINK/WIN_CSC_LINK as
+        # a certificate path ("<project dir> not a file"), so unset the empty
+        # ones to actually get unsigned builds until secrets are configured.
+        run: |
+          for var in CSC_LINK CSC_KEY_PASSWORD APPLE_ID APPLE_APP_SPECIFIC_PASSWORD APPLE_TEAM_ID WIN_CSC_LINK WIN_CSC_KEY_PASSWORD; do
+            if [ -z "${!var}" ]; then
+              unset "$var"
+            fi
+          done
+          npx electron-builder --publish always
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # --- Code signing (optional) --------------------------------------
