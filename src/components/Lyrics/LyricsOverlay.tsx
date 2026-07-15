@@ -222,7 +222,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
 
     useEffect(() => {
         if (visible) {
-            showStatus("歌词模式: 开启")
+            showStatus("歌詞模式：開啟")
         }
     }, [visible, showStatus])
 
@@ -254,7 +254,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
         const cached = lyricsCache.get(cacheKey)
         if (cached && cached.length > 0) {
             applyLyrics(cached)
-            showStatus("已载入同步歌词")
+            showStatus("已載入同步歌詞")
             return
         }
 
@@ -262,7 +262,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
         setError(false)
         setLyrics([])
         setActiveIndex(-1)
-        showStatus(`搜索中: ${title}...`)
+        showStatus(`搜尋中: ${title}...`)
         try {
             const aiConfig = {
                 provider: localStorage.getItem('neonwave_lyrics_ai_provider') || 'default',
@@ -270,7 +270,8 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                 endpoint: localStorage.getItem('neonwave_lyrics_ai_endpoint') || '',
                 model: localStorage.getItem('neonwave_lyrics_ai_model') || '',
                 mode: localStorage.getItem('neonwave_lyrics_ai_mode') || 'filename',
-                reasoning: localStorage.getItem('neonwave_lyrics_ai_reasoning') || 'none'
+                reasoning: localStorage.getItem('neonwave_lyrics_ai_reasoning') || 'none',
+                lang: localStorage.getItem('neonwave_lyrics_lang') || 'cn'
             }
             const rawLrc = await window.ipcRenderer.getLyrics(title, artist, path, duration, aiConfig)
             if (isStale()) return
@@ -336,20 +337,20 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
 
                 if (parsed.length > 0) {
                     applyLyrics(parsed)
-                    showStatus("已载入同步歌词")
+                    showStatus("已載入同步歌詞")
                 } else {
                     setError(true)
-                    showStatus("未找到同步歌词")
+                    showStatus("未找到同步歌詞")
                 }
             } else {
                 setError(true)
-                showStatus("未找到同步歌词")
+                showStatus("未找到同步歌詞")
             }
         } catch (e) {
             if (isStale()) return
             console.error(e)
             setError(true)
-            showStatus("载入歌词时发生错误")
+            showStatus("載入歌詞時發生錯誤")
         } finally {
             if (!isStale()) {
                 setLoading(false)
@@ -461,14 +462,14 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                 onMouseOver={(e) => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.background = 'rgba(0,0,0,0.7)' }}
                 onMouseOut={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; e.currentTarget.style.background = 'rgba(0,0,0,0.4)' }}
             >
-                ✕ 关闭 (ESC)
+                ✕ 關閉 (ESC)
             </div>
 
             {/* Status bar */}
             {(statusMsg || loading) && (
                 <div className={`lyrics-status ${!statusVisible ? 'hiding' : ''}`}>
                     {loading && <div className="spinner" />}
-                    {loading ? '搜索中...' : statusMsg}
+                    {loading ? '搜尋中...' : statusMsg}
                 </div>
             )}
 
@@ -478,7 +479,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
             {/* Error fallback with retry */}
             {error && (
                 <div className="lyrics-error" style={{ pointerEvents: 'auto' }}>
-                    <div>未找到歌词</div>
+                    <div>未找到歌詞</div>
                     <button
                         onClick={() => setFetchTrigger(t => t + 1)}
                         style={{
@@ -495,7 +496,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                         onMouseOver={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.2)' }}
                         onMouseOut={(e) => { e.currentTarget.style.background = 'rgba(255,255,255,0.1)' }}
                     >
-                        🔄 重新搜索
+                        🔄 重新搜尋
                     </button>
                 </div>
             )}
@@ -514,7 +515,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                     onMouseOver={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.6)' }}
                     onMouseOut={(e) => { e.currentTarget.style.color = 'rgba(255,255,255,0.2)' }}
                 >
-                    🔄 重新搜索歌词
+                    🔄 重新搜尋歌詞
                 </div>
             )}
         </div>

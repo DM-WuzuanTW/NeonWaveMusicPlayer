@@ -526,6 +526,27 @@ export function SettingsView() {
                                 <option value="glass">🫧 毛玻璃膠囊 (Glass Capsule)</option>
                             </select>
                         </div>
+
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px' }}>
+                            <div>
+                                <div style={{ color: 'var(--text-main)' }}>歌詞語言</div>
+                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '480px', marginTop: '4px', lineHeight: '1.5' }}>
+                                    顯示歌詞時自動轉換中文字形（不影響原始歌詞檔）。
+                                </div>
+                            </div>
+                            <select
+                                className="settings-select"
+                                defaultValue={localStorage.getItem('neonwave_lyrics_lang') || 'cn'}
+                                onChange={(e) => {
+                                    localStorage.setItem('neonwave_lyrics_lang', e.target.value);
+                                    window.dispatchEvent(new Event('neonwave:settings-changed'));
+                                }}
+                            >
+                                <option value="cn">簡體中文</option>
+                                <option value="tw">繁體中文</option>
+                                <option value="original">原文（不轉換）</option>
+                            </select>
+                        </div>
                     </div>
                 </div>
 
