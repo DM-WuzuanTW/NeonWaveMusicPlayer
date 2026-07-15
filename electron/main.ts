@@ -44,9 +44,9 @@ if (process.platform === 'win32') {
     app.commandLine.appendSwitch('disable-gpu-sandbox')
     app.commandLine.appendSwitch('no-sandbox')
   }
-} else {
-  app.disableHardwareAcceleration()
 }
+// macOS/Linux: keep hardware acceleration enabled — the TDR workaround above
+// only targets Windows driver crashes.
 
 
 
@@ -162,19 +162,28 @@ let discordBot: any = null
 let partyRoomService: PartyRoomService | null = null
 
 function createWindow() {
+  // Frameless title bar with overlay controls works on Windows/macOS.
+  // Linux has no overlay window controls, so keep the native frame there.
+  const frameOptions: Electron.BrowserWindowConstructorOptions =
+    process.platform === 'linux'
+      ? {}
+      : {
+          titleBarStyle: 'hidden',
+          titleBarOverlay: {
+            color: '#00000000',
+            symbolColor: '#ffffff',
+            height: 30
+          }
+        }
+
   win = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
     icon: path.join(process.env.VITE_PUBLIC!, 'logo.png'),
-    titleBarStyle: 'hidden', 
-    titleBarOverlay: {
-      color: '#00000000',
-      symbolColor: '#ffffff',
-      height: 30
-    },
-    show: false, 
+    ...frameOptions,
+    show: false,
     backgroundColor: '#020617', 
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
