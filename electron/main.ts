@@ -353,25 +353,74 @@ app.whenReady().then(() => {
     app.setAppUserModelId('NeonWave')
   }
 
+  // PowerShell polling loop that prints the foreground process name whenever
+  // it changes. Embedded (not shipped as a file) so it also works when the
+  // app is packaged into app.asar.
+  const ACTIVE_WINDOW_MONITOR_PS = `
+$code = @"
+    using System;
+    using System.Runtime.InteropServices;
+
+    public class User32 {
+        [DllImport("user32.dll")]
+        public static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        public static extern int GetWindowThreadProcessId(IntPtr hWnd, out int lpdwProcessId);
+    }
+"@
+
+if (-not ([System.Management.Automation.PSTypeName]'User32').Type) {
+    try { Add-Type $code -ErrorAction SilentlyContinue } catch {}
+}
+
+$lastProcessName = ""
+
+while ($true) {
+    try {
+        $hwnd = [User32]::GetForegroundWindow()
+        if ($hwnd -ne [System.IntPtr]::Zero) {
+            $pidOut = 0
+            [void][User32]::GetWindowThreadProcessId($hwnd, [ref]$pidOut)
+            if ($pidOut -gt 0) {
+                $process = Get-Process -Id $pidOut -ErrorAction SilentlyContinue
+                if ($process) {
+                    $name = $process.ProcessName
+                    if ($name -ne $lastProcessName) {
+                        $lastProcessName = $name
+                        Write-Output $name
+                    }
+                }
+            }
+        }
+    } catch {}
+    Start-Sleep -Seconds 2
+}
+`
+
   function startActiveWindowMonitor() {
     if (process.platform !== 'win32') return
-    const scriptPath = path.join(process.env.APP_ROOT!, 'scripts/get-active-window.ps1')
-    
+
     try {
       monitorProcess = spawn('powershell.exe', [
         '-ExecutionPolicy', 'Bypass',
         '-NoProfile',
-        '-File', scriptPath
+        '-EncodedCommand', Buffer.from(ACTIVE_WINDOW_MONITOR_PS, 'utf16le').toString('base64')
       ], {
         stdio: ['ignore', 'pipe', 'ignore'],
         windowsHide: true
       })
 
       monitorProcess.stdout.on('data', (data: Buffer) => {
-        const name = data.toString().trim()
-        if (name) {
-          activeWindowName = name
+        // A chunk may contain several lines; the last one is the newest.
+        const lines = data.toString().split(/\r?\n/).map(s => s.trim()).filter(Boolean)
+        if (lines.length > 0) {
+          activeWindowName = lines[lines.length - 1]
         }
+      })
+
+      monitorProcess.on('error', (err: Error) => {
+        console.warn('Active window monitor failed to start:', err.message)
       })
 
       monitorProcess.on('close', () => {
