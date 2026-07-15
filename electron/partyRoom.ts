@@ -402,14 +402,31 @@ export class PartyRoomService {
     return null
   }
 
+  private cloudflaredAsset(): { url: string; archive: 'none' | 'tgz' } | null {
+    const base = 'https://github.com/cloudflare/cloudflared/releases/latest/download'
+    const arch = process.arch === 'arm64' ? 'arm64' : 'amd64'
+    switch (process.platform) {
+      case 'win32':
+        return { url: `${base}/cloudflared-windows-amd64.exe`, archive: 'none' }
+      case 'linux':
+        return { url: `${base}/cloudflared-linux-${arch}`, archive: 'none' }
+      case 'darwin':
+        // macOS releases ship as a tarball containing the `cloudflared` binary
+        return { url: `${base}/cloudflared-darwin-${arch}.tgz`, archive: 'tgz' }
+      default:
+        return null
+    }
+  }
+
   private async downloadCloudflared(): Promise<string> {
-    if (process.platform !== 'win32') {
-      throw new Error('目前僅支援 Windows 自動安裝 cloudflared')
+    const asset = this.cloudflaredAsset()
+    if (!asset) {
+      throw new Error(`此平台 (${process.platform}) 不支援自動安裝 cloudflared`)
     }
 
-    const releaseUrl = 'https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe'
+    const releaseUrl = asset.url
     const installDir = path.join(app.getPath('userData'), 'cloudflared')
-    const targetPath = path.join(installDir, 'cloudflared.exe')
+    const targetPath = path.join(installDir, process.platform === 'win32' ? 'cloudflared.exe' : 'cloudflared')
     const tempPath = `${targetPath}.download`
 
     await fsPromises.mkdir(installDir, { recursive: true })
@@ -453,7 +470,24 @@ export class PartyRoomService {
       file.once('error', reject)
     })
 
-    await fsPromises.rename(tempPath, targetPath)
+    if (asset.archive === 'tgz') {
+      await new Promise<void>((resolve, reject) => {
+        const tar = spawn('tar', ['-xzf', tempPath, '-C', installDir], { stdio: 'ignore' })
+        tar.on('error', reject)
+        tar.on('exit', (code) => {
+          if (code === 0) resolve()
+          else reject(new Error(`解壓 cloudflared 失敗 (tar exit ${code ?? 'unknown'})`))
+        })
+      })
+      await fsPromises.rm(tempPath, { force: true })
+    } else {
+      await fsPromises.rename(tempPath, targetPath)
+    }
+
+    if (process.platform !== 'win32') {
+      await fsPromises.chmod(targetPath, 0o755)
+    }
+
     this.cloudflaredPath = targetPath
     return targetPath
   }
