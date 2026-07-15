@@ -781,6 +781,14 @@ while ($true) {
                 isPlaying: !!data?.isPlaying
             })
         }
+        // Mirror the current track onto the bot's "Listening to ..." presence
+        if (discordBot && discordBot.isConnected && discordBot.currentChannelId) {
+            try {
+                discordBot.updateNowPlaying(data?.title || '', data?.artist || '', !!data?.isPlaying)
+            } catch (e) {
+                // Presence updates must never break player sync.
+            }
+        }
     })
 
     ipcMain.handle('window:toggleMiniPlayer', () => {

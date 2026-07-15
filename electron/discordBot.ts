@@ -1,10 +1,11 @@
-import { Client, GatewayIntentBits, ChannelType } from 'discord.js';
+import { Client, GatewayIntentBits, ChannelType, ActivityType } from 'discord.js';
 import {
     joinVoiceChannel,
     createAudioPlayer,
     createAudioResource,
     StreamType,
     AudioResource,
+    AudioPlayerStatus,
     entersState,
     VoiceConnectionStatus,
     type DiscordGatewayAdapterCreator,
@@ -31,6 +32,11 @@ export class DiscordBotManager {
     private loginPromise: Promise<{ username: string, avatar: string | null }> | null = null;
     private nextLoginAllowedAt = 0;
     private nextVoiceJoinAllowedAt = 0;
+    // Volume survives track switches — every new resource re-applies it.
+    private lastVolume = 1.0;
+    private nowPlaying: { title: string; artist: string } | null = null;
+    private lastPresenceKey = '';
+    private lastPresenceAt = 0;
     public isConnected = false;
     public currentGuildId: string | null = null;
     public currentChannelId: string | null = null;
@@ -263,7 +269,8 @@ export class DiscordBotManager {
     }
 
     async leaveChannel() {
-        this.stop(); 
+        this.stop();
+        this.clearBotPresence();
         if (this.currentConnection) {
             this.currentConnection.destroy();
             this.currentConnection = null;
@@ -290,8 +297,49 @@ export class DiscordBotManager {
             currentGuildId: this.currentGuildId,
             currentChannelId: this.currentChannelId,
             currentGuildName: this.client?.guilds.cache.get(this.currentGuildId!)?.name || null,
-            currentChannelName: this.client?.guilds.cache.get(this.currentGuildId!)?.channels.cache.get(this.currentChannelId!)?.name || null
+            currentChannelName: this.client?.guilds.cache.get(this.currentGuildId!)?.channels.cache.get(this.currentChannelId!)?.name || null,
+            isPlaying: this.player.state.status === AudioPlayerStatus.Playing,
+            nowPlaying: this.nowPlaying
         };
+    }
+
+    // Mirror the app's current track onto the bot's Discord presence
+    // ("Listening to <song>"). Throttled: only when the shown text changes,
+    // at most once every 5s (gateway presence updates are rate limited).
+    updateNowPlaying(title: string, artist: string, isPlaying: boolean) {
+        this.nowPlaying = title ? { title, artist } : null;
+
+        if (!this.client?.user || !this.isConnected || !this.currentChannelId) return;
+
+        const name = title
+            ? (isPlaying ? `${title}${artist ? ` - ${artist}` : ''}` : `⏸ ${title}`)
+            : '';
+        const key = name;
+        const now = Date.now();
+        if (key === this.lastPresenceKey) return;
+        if (now - this.lastPresenceAt < 5000) return; // retried by the next sync tick
+
+        this.lastPresenceKey = key;
+        this.lastPresenceAt = now;
+        try {
+            if (name) {
+                this.client.user.setActivity({ name, type: ActivityType.Listening });
+            } else {
+                this.client.user.setPresence({ activities: [] });
+            }
+        } catch (e) {
+            console.warn('[DiscordBot] Failed to update presence:', e);
+        }
+    }
+
+    private clearBotPresence() {
+        this.nowPlaying = null;
+        this.lastPresenceKey = '';
+        try {
+            this.client?.user?.setPresence({ activities: [] });
+        } catch {
+            // Client may already be destroyed.
+        }
     }
 
     private killCurrentProcess() {
@@ -361,7 +409,7 @@ export class DiscordBotManager {
                 inlineVolume: true
             });
             this.currentResource = resource;
-            resource.volume?.setVolume(1.0);
+            resource.volume?.setVolume(this.lastVolume);
             this.player.play(resource);
             return;
         }
@@ -407,7 +455,7 @@ export class DiscordBotManager {
             inlineVolume: true
         });
         this.currentResource = resource;
-        resource.volume?.setVolume(1.0);
+        resource.volume?.setVolume(this.lastVolume);
 
         this.player.play(resource);
     }
@@ -433,6 +481,7 @@ export class DiscordBotManager {
 
     setVolume(volume: number) {
         const normalized = Math.max(0, Math.min(100, volume)) / 100;
+        this.lastVolume = normalized;
 
         if (this.currentResource && this.currentResource.volume) {
             this.currentResource.volume.setVolume(normalized);
@@ -493,7 +542,7 @@ export class DiscordBotManager {
             });
 
             this.currentResource = resource;
-            resource.volume?.setVolume(1.0);
+            resource.volume?.setVolume(this.lastVolume);
             this.player.play(resource);
 
         } else {
@@ -503,7 +552,7 @@ export class DiscordBotManager {
             });
 
             this.currentResource = resource;
-            resource.volume?.setVolume(1.0);
+            resource.volume?.setVolume(this.lastVolume);
             this.player.play(resource);
         }
 
