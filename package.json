@@ -3,7 +3,7 @@
   "private": true,
   "version": "6.6.4",
   "description": "A modern, high-fidelity music player with 8D spatial audio effects.",
-  "author": "DM-WuzuanTW",
+  "author": "wu-zuan",
   "type": "module",
   "scripts": {
     "dev": "vite",
