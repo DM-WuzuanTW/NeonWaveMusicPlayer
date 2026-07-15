@@ -19,6 +19,12 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'media', privileges: { bypassCSP: true, standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }
 ])
 
+// Opt-in Chrome DevTools Protocol endpoint for automated smoke tests:
+//   NW_REMOTE_DEBUG=9223 npm run dev
+if (process.env.NW_REMOTE_DEBUG) {
+  app.commandLine.appendSwitch('remote-debugging-port', process.env.NW_REMOTE_DEBUG)
+}
+
 const require = createRequire(import.meta.url)
 let ffmpegPath = require('ffmpeg-static')
 if (app.isPackaged) {
@@ -185,10 +191,9 @@ function createWindow() {
     icon: path.join(process.env.VITE_PUBLIC!, 'logo.png'),
     ...frameOptions,
     show: false,
-    backgroundColor: '#020617', 
+    backgroundColor: '#020617',
     webPreferences: {
       preload: path.join(__dirname, 'preload.mjs'),
-      webSecurity: false, 
       backgroundThrottling: false,
       devTools: true
     },
@@ -340,14 +345,39 @@ autoUpdater.on('update-downloaded', (info) => {
 })
 
 app.whenReady().then(() => {
-  // Handle media:// standard protocol requests for local file playback
-  protocol.handle('media', (request) => {
-    const { pathname } = new URL(request.url)
-    let decodedPath = decodeURIComponent(pathname)
-    // Windows paths arrive as "/D:/dir/file" — strip the leading slash.
-    // POSIX paths ("/home/user/file") must keep it.
-    if (process.platform === 'win32') decodedPath = decodedPath.replace(/^\/+/, '')
-    return net.fetch(pathToFileURL(path.normalize(decodedPath)).toString())
+  // media:// protocol — serves audio/video to the renderer with CORS headers
+  // so Web Audio (MediaElementAudioSourceNode) gets un-tainted samples while
+  // webSecurity stays enabled.
+  //   media:///<abs path>        → local file (Range supported)
+  //   media://remote/?u=<url>    → main-process proxy for remote streams
+  //                                (e.g. googlevideo URLs without CORS headers)
+  protocol.handle('media', async (request) => {
+    const { host, pathname, searchParams } = new URL(request.url)
+    const range = request.headers.get('range')
+    const fetchInit: RequestInit = range ? { headers: { Range: range } } : {}
+
+    let upstream: Response
+    if (host === 'remote') {
+      const target = searchParams.get('u')
+      if (!target || !/^https?:\/\//i.test(target)) {
+        return new Response('bad remote url', { status: 400 })
+      }
+      upstream = await net.fetch(target, { ...fetchInit, redirect: 'follow' })
+    } else {
+      let decodedPath = decodeURIComponent(pathname)
+      // Windows paths arrive as "/D:/dir/file" — strip the leading slash.
+      // POSIX paths ("/home/user/file") must keep it.
+      if (process.platform === 'win32') decodedPath = decodedPath.replace(/^\/+/, '')
+      upstream = await net.fetch(pathToFileURL(path.normalize(decodedPath)).toString(), fetchInit)
+    }
+
+    const headers = new Headers(upstream.headers)
+    headers.set('Access-Control-Allow-Origin', '*')
+    return new Response(upstream.body, {
+      status: upstream.status,
+      statusText: upstream.statusText,
+      headers
+    })
   })
   
   if (process.platform === 'win32') {
@@ -818,7 +848,6 @@ while ($true) {
             backgroundColor: '#00000000',
             webPreferences: {
                 preload: path.join(__dirname, 'preload.mjs'),
-                webSecurity: false,
             }
         })
 

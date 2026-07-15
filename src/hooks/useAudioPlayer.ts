@@ -88,7 +88,9 @@ export function useAudioPlayer(contextMode?: string) {
     })
     const [isMuted, setIsMuted] = useState(() => localStorage.getItem('nw_muted') === 'true')
     const [is8D, setIs8D] = useState(() => localStorage.getItem('nw_8d') === 'true')
-    const [defaultArtwork, setDefaultArtwork] = useState('')
+    // Relative URL works from both the dev server and the packaged file:// page
+    // (fetch()-ing it to a data URL would be blocked under webSecurity).
+    const defaultArtwork = 'logo.png'
 
     
     const [playlist, setPlaylist] = useState<Track[]>([])
@@ -106,16 +108,11 @@ export function useAudioPlayer(contextMode?: string) {
     const isPlaybackPendingRef = useRef(false)
     const playRequestIdRef = useRef(0)
 
-    
+    // Expose the shared media element for automated smoke tests (dev only)
     useEffect(() => {
-        fetch('logo.png')
-            .then(res => res.blob())
-            .then(blob => {
-                const reader = new FileReader()
-                reader.onloadend = () => setDefaultArtwork(reader.result as string)
-                reader.readAsDataURL(blob)
-            })
-            .catch(err => console.error("Failed to load logo", err))
+        if (import.meta.env.DEV) {
+            ;(window as unknown as Record<string, unknown>).__nwAudio = audioRef.current
+        }
     }, [])
 
     
@@ -209,10 +206,10 @@ export function useAudioPlayer(contextMode?: string) {
                     setCurrentTrack({ ...trackToPlay })
 
                     if (streamInfo && streamInfo.url) {
-                        finalUrl = streamInfo.url
-                        
-                        
-                        
+                        // Remote stream URLs (googlevideo) carry no CORS headers, which
+                        // would taint Web Audio under webSecurity. Proxy them through the
+                        // main process via the media:// scheme, which adds the headers.
+                        finalUrl = `media://remote/?u=${encodeURIComponent(streamInfo.url)}`
                         audioRef.current.crossOrigin = "anonymous"
                     } else throw new Error("No stream URL")
                 } else throw new Error("Not found on YouTube")
@@ -226,11 +223,12 @@ export function useAudioPlayer(contextMode?: string) {
             }
         } else {
             audioRef.current.crossOrigin = "anonymous"
-            // Use file:// protocol for HTMLAudioElement — custom protocols like media:// don't work for audio playback
-            const encodedPath = trackToPlay.path.split(/[\\/]/).map(encodeURIComponent).join('/')
-            // Windows "D:\a\b.mp3" -> "file:///D:/a/b.mp3"; POSIX "/home/a/b.mp3"
-            // already yields a leading "/" after the join -> "file:///home/a/b.mp3"
-            finalUrl = encodedPath.startsWith('/') ? `file://${encodedPath}` : `file:///${encodedPath}`
+            // Local files go through the privileged media:// scheme (CORS-enabled
+            // by the main-process handler) so webSecurity can stay on. A custom
+            // standard scheme needs a non-empty host, so use media://local/<path>
+            // (the empty-host media:/// form fails to parse in the renderer).
+            const encodedPath = trackToPlay.path.split(/[\\/]/).filter(Boolean).map(encodeURIComponent).join('/')
+            finalUrl = `media://local/${encodedPath}`
         }
 
         // Apply Final URL for new track
