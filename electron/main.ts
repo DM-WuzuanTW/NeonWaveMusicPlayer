@@ -332,9 +332,12 @@ autoUpdater.on('update-downloaded', (info) => {
 app.whenReady().then(() => {
   // Handle media:// standard protocol requests for local file playback
   protocol.handle('media', (request) => {
-    const url = request.url.replace('media:///', '').replace('media://', '')
-    const decodedPath = path.normalize(decodeURIComponent(url))
-    return net.fetch(pathToFileURL(decodedPath).toString())
+    const { pathname } = new URL(request.url)
+    let decodedPath = decodeURIComponent(pathname)
+    // Windows paths arrive as "/D:/dir/file" — strip the leading slash.
+    // POSIX paths ("/home/user/file") must keep it.
+    if (process.platform === 'win32') decodedPath = decodedPath.replace(/^\/+/, '')
+    return net.fetch(pathToFileURL(path.normalize(decodedPath)).toString())
   })
   
   if (process.platform === 'win32') {

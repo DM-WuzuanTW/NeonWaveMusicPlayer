@@ -228,7 +228,9 @@ export function useAudioPlayer(contextMode?: string) {
             audioRef.current.crossOrigin = "anonymous"
             // Use file:// protocol for HTMLAudioElement — custom protocols like media:// don't work for audio playback
             const encodedPath = trackToPlay.path.split(/[\\/]/).map(encodeURIComponent).join('/')
-            finalUrl = `file:///${encodedPath}`
+            // Windows "D:\a\b.mp3" -> "file:///D:/a/b.mp3"; POSIX "/home/a/b.mp3"
+            // already yields a leading "/" after the join -> "file:///home/a/b.mp3"
+            finalUrl = encodedPath.startsWith('/') ? `file://${encodedPath}` : `file:///${encodedPath}`
         }
 
         // Apply Final URL for new track
