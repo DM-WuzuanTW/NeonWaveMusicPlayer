@@ -11,6 +11,10 @@ export function useAppDetection() {
     currentAppRef.current = currentApp
 
     useEffect(() => {
+        // Foreground-app detection is Windows-only (PowerShell monitor);
+        // elsewhere the IPC always returns "unknown", so skip the polling.
+        if (navigator.userAgent.indexOf('Windows') === -1) return
+
         const checkApp = async () => {
             try {
                 const appName = await window.ipcRenderer.invoke('app:active-window')

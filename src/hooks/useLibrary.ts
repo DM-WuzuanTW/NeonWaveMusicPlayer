@@ -129,49 +129,37 @@ export function useLibrary() {
 
     const scanFolder = async (folderPath: string): Promise<Track[]> => {
         try {
-            const files = await window.ipcRenderer.listMusicFiles(folderPath)
+            const files: string[] = await window.ipcRenderer.listMusicFiles(folderPath)
 
-            // Batch Processing to avoid IPC overload
             const chunk = <T>(arr: T[], size: number) =>
                 Array.from({ length: Math.ceil(arr.length / size) }, (_: any, i: number) =>
                     arr.slice(i * size, i * size + size));
 
-            const chunks = chunk(files, 50); 
+            // Batch metadata read — the main process caches by path+mtime, so
+            // relaunches only re-parse new/changed files instead of every track.
+            const chunks = chunk(files, 200)
             const allTracks: Track[] = []
 
             for (const batch of chunks) {
-                const batchResults = await Promise.all(batch.map(async (filePath) => {
+                const metas: any[] = await window.ipcRenderer.getAudioMetadataBatch(batch)
+                const metaByPath = new Map(metas.map(m => [m.path, m]))
+
+                for (const filePath of batch) {
                     const filename = filePath.replace(/^.*[\\/]/, '')
-                    try {
-                        // Optimization: Do NOT load artwork during scan. Load it on play.
-                        const meta = await window.ipcRenderer.getAudioMetadata(filePath, { loadArtwork: false })
-                        const mediaType = getMediaType(filePath)
-                        return {
-                            path: filePath,
-                            mediaType,
-                            title: meta?.title || filename,
-                            artist: meta?.artist || '未知演出者',
-                            album: meta?.album || '未知專輯',
-                            artwork: undefined, // Will be loaded lazily on play
-                            duration: meta?.duration || 0,
-                            codec: meta?.codec,
-                            bitrate: meta?.bitrate,
-                            sampleRate: meta?.sampleRate
-                        }
-                    } catch {
-                        const mediaType = getMediaType(filePath)
-                        return {
-                            path: filePath,
-                            mediaType,
-                            title: filename,
-                            artist: '未知演出者',
-                            album: '未知專輯',
-                            duration: 0
-                        }
-                    }
-                }))
-                allTracks.push(...batchResults)
-                // Small delay to let UI breathe if needed, but await Promise.all yields anyway
+                    const meta = metaByPath.get(filePath)
+                    allTracks.push({
+                        path: filePath,
+                        mediaType: getMediaType(filePath),
+                        title: meta?.title || filename,
+                        artist: meta?.artist || '未知演出者',
+                        album: meta?.album || '未知專輯',
+                        artwork: undefined, // Loaded lazily on play
+                        duration: meta?.duration || 0,
+                        codec: meta?.codec,
+                        bitrate: meta?.bitrate,
+                        sampleRate: meta?.sampleRate
+                    })
+                }
             }
 
             return allTracks

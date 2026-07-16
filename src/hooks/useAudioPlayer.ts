@@ -381,11 +381,6 @@ export function useAudioPlayer(contextMode?: string) {
         const onDurationChange = () => setDuration(audio.duration)
         const onEnded = () => {
             handleNext(true)
-                .finally(() => {
-                    setTimeout(() => {
-                        window.ipcRenderer.invoke('app:clear-memory').catch(() => {})
-                    }, 1000)
-                })
         }
         const onPlay = () => {
             isPlaybackPendingRef.current = false

@@ -970,14 +970,78 @@ while ($true) {
     }
   })
 
-  ipcMain.handle('files:readBuffer', async (_, filePath) => {
+  // Persistent metadata cache (userData/metadata-cache.json), keyed by
+  // "path\0mtime" so an edited/replaced file is re-scanned automatically.
+  // Avoids re-parsing every track's tags on every app launch.
+  const metaCachePath = path.join(app.getPath('userData'), 'metadata-cache.json')
+  let metaCache: Record<string, any> = {}
+  let metaCacheLoaded = false
+  let metaCacheDirty = false
+  let metaCacheFlushTimer: NodeJS.Timeout | null = null
+
+  const loadMetaCache = async () => {
+    if (metaCacheLoaded) return
+    metaCacheLoaded = true
     try {
-      const buffer = await fs.readFile(filePath)
-      return buffer
-    } catch (error) {
-      console.error('Error reading file:', error)
-      return null
+      metaCache = JSON.parse(await fs.readFile(metaCachePath, 'utf8'))
+    } catch {
+      metaCache = {}
     }
+  }
+
+  const scheduleMetaFlush = () => {
+    metaCacheDirty = true
+    if (metaCacheFlushTimer) return
+    metaCacheFlushTimer = setTimeout(async () => {
+      metaCacheFlushTimer = null
+      if (!metaCacheDirty) return
+      metaCacheDirty = false
+      try {
+        await fs.writeFile(metaCachePath, JSON.stringify(metaCache))
+      } catch (e) {
+        console.warn('[MetaCache] flush failed:', e)
+      }
+    }, 1500)
+  }
+
+  // Batch metadata read for a folder scan. Returns lightweight metadata for
+  // every path, hitting the disk parser only for new/changed files.
+  ipcMain.handle('files:getMetadataBatch', async (_, filePaths: string[]) => {
+    await loadMetaCache()
+    const results = await Promise.all((filePaths || []).map(async (filePath) => {
+      let mtime = 0
+      try {
+        mtime = (await fs.stat(filePath)).mtimeMs
+      } catch {
+        return null
+      }
+      const key = `${filePath}\0${Math.round(mtime)}`
+      const cached = metaCache[key]
+      if (cached) return { path: filePath, ...cached }
+
+      try {
+        const metadata = await mm.parseFile(filePath, { skipCovers: true })
+        const entry = {
+          title: metadata.common.title || null,
+          artist: metadata.common.artist || null,
+          album: metadata.common.album || null,
+          duration: metadata.format.duration || 0,
+          codec: metadata.format.codec || null,
+          bitrate: metadata.format.bitrate || null,
+          sampleRate: metadata.format.sampleRate || null
+        }
+        // Drop any older entry for this path (different mtime) before caching
+        for (const k of Object.keys(metaCache)) {
+          if (k.startsWith(`${filePath}\0`)) delete metaCache[k]
+        }
+        metaCache[key] = entry
+        scheduleMetaFlush()
+        return { path: filePath, ...entry }
+      } catch {
+        return { path: filePath, title: null, artist: null, album: null, duration: 0 }
+      }
+    }))
+    return results.filter(Boolean)
   })
 
   ipcMain.handle('files:readBufferPartial', async (_, filePath, maxBytes) => {
@@ -1059,19 +1123,7 @@ while ($true) {
     return activeWindowName
   })
 
-  ipcMain.handle('app:clear-memory', async () => {
-    try {
-      const { session } = require('electron')
-      await session.defaultSession.clearCache()
-      if (global.gc) {
-        global.gc()
-      }
-    } catch (e) {
-      console.warn("Memory clear failed:", e)
-    }
-  })
 
-  
   const YtDlpWrap = createRequire(import.meta.url)('yt-dlp-wrap').default
 
   
