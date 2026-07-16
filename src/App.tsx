@@ -141,10 +141,17 @@ function MainApp() {
                   audioBitsPerSecond: 96000
                 })
 
-                recorder.ondataavailable = async (e) => {
+                let chunkWrite = Promise.resolve()
+                recorder.ondataavailable = (e) => {
                   if (e.data.size > 0) {
-                    const buffer = await e.data.arrayBuffer()
-                    window.ipcRenderer.send('discord:audio-chunk', buffer)
+                    chunkWrite = chunkWrite
+                      .then(async () => {
+                        const buffer = await e.data.arrayBuffer()
+                        window.ipcRenderer.send('discord:audio-chunk', buffer)
+                      })
+                      .catch(error => {
+                        console.error('[App] Failed to send Discord audio chunk:', error)
+                      })
                   }
                 }
 

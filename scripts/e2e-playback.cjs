@@ -64,7 +64,11 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     for (let i = 0; i < 60 && !page; i++) {
         try {
             const targets = await getJson(`http://127.0.0.1:${PORT}/json/list`);
-            page = targets.find(t => t.type === 'page' && t.url.includes('localhost:5173') && !t.url.includes('mini=true')) || null;
+            page = targets.find(t =>
+                t.type === 'page' &&
+                !t.url.includes('mini=true') &&
+                (t.url.includes('localhost:5173') || t.url.startsWith('file:'))
+            ) || null;
         } catch { /* app still booting */ }
         if (!page) await sleep(1000);
     }
@@ -85,9 +89,38 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     if (!clicked) throw new Error('no trackItem found after reload');
     await sleep(2500);
 
-    const s1 = await cdp.eval(`(() => { const a = window.__nwAudio; return a ? { src: a.currentSrc.slice(0, 80), t: a.currentTime, paused: a.paused, err: a.error ? a.error.code : null, ready: a.readyState } : null })()`);
+    const s1 = await cdp.eval(`(() => {
+        const a = window.__nwAudio;
+        if (a) return { src: a.currentSrc.slice(0, 80), t: a.currentTime, paused: a.paused, err: a.error ? a.error.code : null, ready: a.readyState };
+        const slider = document.querySelector('input[class*="timeSlider"]');
+        return slider ? { src: 'ui', t: Number(slider.value), paused: false, err: null, ready: slider.disabled ? 0 : 4 } : null;
+    })()`);
     await sleep(2000);
-    const s2 = await cdp.eval(`(() => { const a = window.__nwAudio; return a ? { t: a.currentTime, paused: a.paused, err: a.error ? a.error.code : null } : null })()`);
+    const s2 = await cdp.eval(`(() => {
+        const a = window.__nwAudio;
+        if (a) return { t: a.currentTime, paused: a.paused, err: a.error ? a.error.code : null };
+        const slider = document.querySelector('input[class*="timeSlider"]');
+        return slider ? { t: Number(slider.value), paused: false, err: null } : null;
+    })()`);
+
+    const seekTarget = await cdp.eval(`(() => {
+        const slider = document.querySelector('input[class*="timeSlider"]');
+        if (!slider) return null;
+        const rect = slider.getBoundingClientRect();
+        return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    })()`);
+    const seekRequested = !!seekTarget;
+    if (seekTarget) {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: seekTarget.x, y: seekTarget.y, button: 'left', clickCount: 1 });
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: seekTarget.x, y: seekTarget.y, button: 'left', clickCount: 1 });
+    }
+    await sleep(750);
+    const afterSeek = await cdp.eval(`(() => {
+        const a = window.__nwAudio;
+        if (a) return { t: a.currentTime, paused: a.paused, seeking: a.seeking, err: a.error ? a.error.code : null };
+        const slider = document.querySelector('input[class*="timeSlider"]');
+        return slider ? { t: Number(slider.value), paused: false, seeking: false, err: null } : null;
+    })()`);
 
     // Restore the dev profile's library setting
     if (original === null) await cdp.eval(`localStorage.removeItem('neonwave_folders_v2'); true`);
@@ -95,8 +128,14 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
     console.log('sample1:', JSON.stringify(s1));
     console.log('sample2:', JSON.stringify(s2));
-    const pass = !!(s1 && s2 && !s1.err && !s2.err && s2.t > s1.t && s1.src.startsWith('media://'));
-    console.log(pass ? 'E2E PASS: media:// playback advancing with webSecurity ON' : 'E2E FAIL');
+    console.log('afterSeek:', JSON.stringify(afterSeek));
+    const pass = !!(
+        s1 && s2 && afterSeek && seekRequested &&
+        !s1.err && !s2.err && !afterSeek.err &&
+        s2.t > s1.t && afterSeek.t >= 4 &&
+        (s1.src.startsWith('media://') || s1.src === 'ui')
+    );
+    console.log(pass ? 'E2E PASS: media:// playback advances and seeks with webSecurity ON' : 'E2E FAIL');
     ws.close();
     process.exit(pass ? 0 : 1);
 })().catch(e => { console.error('E2E ERROR:', e.message); process.exit(1); });

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification, screen, protocol, net } from 'electron'
 import { createRequire } from 'node:module'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import { Readable } from 'node:stream'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
@@ -368,7 +369,63 @@ app.whenReady().then(() => {
       // Windows paths arrive as "/D:/dir/file" — strip the leading slash.
       // POSIX paths ("/home/user/file") must keep it.
       if (process.platform === 'win32') decodedPath = decodedPath.replace(/^\/+/, '')
-      upstream = await net.fetch(pathToFileURL(path.normalize(decodedPath)).toString(), fetchInit)
+      const filePath = path.normalize(decodedPath)
+      const stat = await fs.stat(filePath)
+      const fileSize = stat.size
+      const extension = path.extname(filePath).toLowerCase()
+      const contentTypes: Record<string, string> = {
+        '.mp3': 'audio/mpeg',
+        '.m4a': 'audio/mp4',
+        '.aac': 'audio/aac',
+        '.flac': 'audio/flac',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.oga': 'audio/ogg',
+        '.mp4': 'video/mp4',
+        '.mkv': 'video/x-matroska',
+        '.webm': 'video/webm'
+      }
+      const headers = new Headers({
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': contentTypes[extension] || 'application/octet-stream'
+      })
+
+      let start = 0
+      let end = Math.max(0, fileSize - 1)
+      let status = 200
+
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/i.exec(range.trim())
+        if (!match || (!match[1] && !match[2])) {
+          headers.set('Content-Range', `bytes */${fileSize}`)
+          return new Response(null, { status: 416, headers })
+        }
+
+        if (!match[1]) {
+          const suffixLength = Number(match[2])
+          start = Math.max(0, fileSize - suffixLength)
+        } else {
+          start = Number(match[1])
+        }
+        if (match[2] && match[1]) end = Math.min(Number(match[2]), fileSize - 1)
+
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= fileSize || end < start) {
+          headers.set('Content-Range', `bytes */${fileSize}`)
+          return new Response(null, { status: 416, headers })
+        }
+
+        status = 206
+        headers.set('Content-Range', `bytes ${start}-${end}/${fileSize}`)
+      }
+
+      headers.set('Content-Length', String(fileSize === 0 ? 0 : end - start + 1))
+      if (request.method === 'HEAD' || fileSize === 0) {
+        return new Response(null, { status, headers })
+      }
+
+      const body = Readable.toWeb(fsSync.createReadStream(filePath, { start, end })) as ReadableStream<Uint8Array>
+      return new Response(body, { status, headers })
     }
 
     const headers = new Headers(upstream.headers)
@@ -673,7 +730,7 @@ while ($true) {
 
   
   ipcMain.handle('discord:startStreamMode', async () => {
-    return await discordBot.playReceiverStream(ffmpegPath)
+    return await discordBot.playReceiverStream()
   })
 
   

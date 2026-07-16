@@ -45,6 +45,12 @@ export class DiscordBotManager {
         this.player.on('error', error => {
             console.error('[DiscordBot] Audio Player Error:', error.message);
         });
+        this.player.on(AudioPlayerStatus.Playing, () => {
+            console.log('[DiscordBot] Voice stream is playing');
+        });
+        this.player.on(AudioPlayerStatus.Idle, () => {
+            console.log('[DiscordBot] Voice stream is idle');
+        });
     }
 
     async login(token: string): Promise<{ username: string, avatar: string | null }> {
@@ -490,7 +496,7 @@ export class DiscordBotManager {
         return false;
     }
 
-    async playReceiverStream(ffmpegPath?: string) {
+    async playReceiverStream() {
         if (!this.currentConnection) throw new Error("Not connected");
         await entersState(this.currentConnection, VoiceConnectionStatus.Ready, 15000);
 
@@ -503,58 +509,19 @@ export class DiscordBotManager {
 
         const streamInput = new PassThrough();
         this.streamInput = streamInput;
+        streamInput.on('error', error => {
+            console.error('[DiscordBot] Voice input stream error:', error);
+        });
 
-        if (ffmpegPath) {
-            const { spawn } = await import('node:child_process');
+        // Chromium's MediaRecorder already emits Discord-compatible Opus in a
+        // WebM container. Passing it through FFmpeg added startup buffering and
+        // an unnecessary decode/re-encode step that could leave the bot silent.
+        const resource = createAudioResource(streamInput, {
+            inputType: StreamType.WebmOpus
+        });
 
-            const args = [
-                '-analyzeduration', '0',
-                '-probesize', '32k',
-                '-loglevel', 'error',
-                '-i', 'pipe:0',
-                '-f', 's16le',
-                '-ar', '48000',
-                '-ac', '2',
-                'pipe:1'
-            ];
-
-            const ffmpegProcess = spawn(ffmpegPath, args);
-            this.currentProcess = ffmpegProcess;
-
-            ffmpegProcess.stdin.on('error', () => { });
-
-            streamInput.pipe(ffmpegProcess.stdin);
-
-            streamInput.on('error', () => { });
-
-            ffmpegProcess.on('error', () => {
-                if (this.streamInput === streamInput) this.streamInput.destroy();
-            });
-
-            ffmpegProcess.on('close', () => {
-                if (this.streamInput === streamInput) this.streamInput.destroy();
-                if (this.currentProcess === ffmpegProcess) this.currentProcess = null;
-            });
-
-            const resource = createAudioResource(ffmpegProcess.stdout, {
-                inputType: StreamType.Raw,
-                inlineVolume: true
-            });
-
-            this.currentResource = resource;
-            resource.volume?.setVolume(this.lastVolume);
-            this.player.play(resource);
-
-        } else {
-            const resource = createAudioResource(streamInput, {
-                inputType: StreamType.WebmOpus,
-                inlineVolume: true
-            });
-
-            this.currentResource = resource;
-            resource.volume?.setVolume(this.lastVolume);
-            this.player.play(resource);
-        }
+        this.currentResource = resource;
+        this.player.play(resource);
 
         return true;
     }
