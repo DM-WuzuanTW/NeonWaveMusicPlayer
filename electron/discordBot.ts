@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, ChannelType, ActivityType } from 'discord.js';
+import { Client, GatewayIntentBits, ChannelType, ActivityType, PermissionFlagsBits } from 'discord.js';
 import {
     joinVoiceChannel,
     createAudioPlayer,
@@ -210,6 +210,16 @@ export class DiscordBotManager {
 
         const channel = guild.channels.cache.get(channelId);
         if (!channel || channel.type !== ChannelType.GuildVoice) throw new Error("Invalid channel");
+        const botMember = guild.members.me;
+        const permissions = botMember ? channel.permissionsFor(botMember) : null;
+        const missingPermissions = [
+            !permissions?.has(PermissionFlagsBits.ViewChannel) ? 'View Channel' : null,
+            !permissions?.has(PermissionFlagsBits.Connect) ? 'Connect' : null,
+            !permissions?.has(PermissionFlagsBits.Speak) ? 'Speak' : null
+        ].filter((permission): permission is string => !!permission);
+        if (missingPermissions.length > 0) {
+            throw new Error(`Bot is missing voice permission(s): ${missingPermissions.join(', ')}`);
+        }
 
         try {
             if (this.currentConnection) {
@@ -266,6 +276,11 @@ export class DiscordBotManager {
 
             this.currentGuildId = guildId;
             this.currentChannelId = channelId;
+            const voiceState = guild.members.me?.voice;
+            if (voiceState?.serverMute) {
+                await this.leaveChannel();
+                throw new Error('Bot is server-muted in this voice channel.');
+            }
 
             return true;
         } catch (e) {
@@ -513,14 +528,13 @@ export class DiscordBotManager {
             console.error('[DiscordBot] Voice input stream error:', error);
         });
 
-        // Chromium's MediaRecorder already emits Discord-compatible Opus in a
-        // WebM container. Passing it through FFmpeg added startup buffering and
-        // an unnecessary decode/re-encode step that could leave the bot silent.
         const resource = createAudioResource(streamInput, {
-            inputType: StreamType.WebmOpus
+            inputType: StreamType.Raw,
+            inlineVolume: true
         });
 
         this.currentResource = resource;
+        resource.volume?.setVolume(this.lastVolume);
         this.player.play(resource);
 
         return true;

@@ -556,6 +556,13 @@ export function useAudioPlayer(contextMode?: string) {
         setCurrentTime(nextTime)
     }, [duration])
     const getAudioStream = useCallback(() => engineRef.current?.getAudioStream(), [])
+    const startPcmCapture = useCallback((onChunk: (chunk: ArrayBuffer) => void) => {
+        engineRef.current?.startPcmCapture(onChunk)
+        return !!engineRef.current
+    }, [])
+    const stopPcmCapture = useCallback(() => {
+        engineRef.current?.stopPcmCapture()
+    }, [])
     const getMediaElement = useCallback(() => audioRef.current, [])
     const setLocalMute = useCallback((muted: boolean) => {
         engineRef.current?.setLocalMute(muted)
@@ -593,6 +600,8 @@ export function useAudioPlayer(contextMode?: string) {
         isMuted,
         setIsMuted,
         getAudioStream,
+        startPcmCapture,
+        stopPcmCapture,
         getMediaElement,
         setLocalMute
     }
