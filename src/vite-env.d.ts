@@ -6,8 +6,8 @@ interface Window {
         openDirectory(): Promise<string | null>
         listMusicFiles(path: string): Promise<string[]>
         getAudioMetadata(path: string, options?: { loadArtwork: boolean }): Promise<any>
+        getAudioMetadataBatch(paths: string[]): Promise<any[]>
         getAudioArtwork(path: string): Promise<string | null>
-        readFileBuffer(path: string): Promise<Uint8Array | null>
 
         checkUpdate(): Promise<{ ok: boolean; error?: string }>
         installUpdate(): Promise<{ ok: boolean; error?: string }>

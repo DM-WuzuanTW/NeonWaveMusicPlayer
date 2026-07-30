@@ -53,15 +53,15 @@ function MainApp() {
     playTrack, togglePlay, setVolume, setIs8D, seek,
     toggleShuffle, toggleRepeat, handleNext, handlePrev,
     setDistance, setSpaceMode, setPosition, setFocusMode, setNormalization,
-    getAudioStream, getMediaElement, setLocalMute
+    getMediaElement, setLocalMute, startPcmCapture, stopPcmCapture
   } = useAudioPlayer(contextMode)
 
   const [view, setView] = useState('all_songs')
   const [showLyrics, setShowLyrics] = useState(false)
   const [importModalData, setImportModalData] = useState<any | null>(null)
   const [discordSyncSignal, setDiscordSyncSignal] = useState(0)
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const discordStreamActiveRef = useRef(false)
+  const discordCaptureActiveRef = useRef(false)
 
   // Listen for playback toggle commands from the mini player (PIP)
   useEffect(() => {
@@ -123,62 +123,45 @@ function MainApp() {
 
         if (status.isConnected && status.currentChannelId) {
           if (isPlaying) {
-            if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+            if (!discordStreamActiveRef.current) {
               console.log('[App] Starting Discord Stream...')
 
               await window.ipcRenderer.invoke('discord:startStreamMode')
               discordStreamActiveRef.current = true
 
-              const stream = getAudioStream()
-              if (stream) {
-                const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                  ? 'audio/webm;codecs=opus'
-                  : MediaRecorder.isTypeSupported('audio/webm')
-                    ? 'audio/webm'
-                    : ''
-                const recorder = new MediaRecorder(stream, {
-                  ...(preferredMime ? { mimeType: preferredMime } : {}),
-                  audioBitsPerSecond: 96000
-                })
+              const captureStarted = startPcmCapture(buffer => {
+                window.ipcRenderer.send('discord:audio-chunk', buffer)
+              })
+              discordCaptureActiveRef.current = captureStarted
 
-                recorder.ondataavailable = async (e) => {
-                  if (e.data.size > 0) {
-                    const buffer = await e.data.arrayBuffer()
-                    window.ipcRenderer.send('discord:audio-chunk', buffer)
-                  }
-                }
-
-                recorder.onerror = (event) => {
-                  console.error('[App] Discord MediaRecorder error:', event)
-                }
-
-                recorder.start(250)
-                mediaRecorderRef.current = recorder
-              } else {
+              if (!captureStarted) {
                 console.warn('[App] Discord stream unavailable from AudioEngine')
                 discordStreamActiveRef.current = false
                 window.ipcRenderer.invoke('discord:stop').catch(console.error)
               }
 
-              if (mediaRecorderRef.current) {
+              if (captureStarted) {
                 setLocalMute(true)
                 window.ipcRenderer.invoke('discord:setVolume', 100).catch(console.error)
               }
             } else {
-              if (mediaRecorderRef.current.state === 'paused') mediaRecorderRef.current.resume()
+              if (!discordCaptureActiveRef.current) {
+                discordCaptureActiveRef.current = startPcmCapture(buffer => {
+                  window.ipcRenderer.send('discord:audio-chunk', buffer)
+                })
+              }
               window.ipcRenderer.invoke('discord:resume').catch(console.error)
             }
           } else {
-            if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-              mediaRecorderRef.current.pause()
+            if (discordCaptureActiveRef.current) {
+              stopPcmCapture()
+              discordCaptureActiveRef.current = false
               window.ipcRenderer.invoke('discord:pause').catch(console.error)
             }
           }
         } else {
-          if (mediaRecorderRef.current) {
-            mediaRecorderRef.current.stop()
-            mediaRecorderRef.current = null
-          }
+          stopPcmCapture()
+          discordCaptureActiveRef.current = false
           if (discordStreamActiveRef.current) {
             discordStreamActiveRef.current = false
             window.ipcRenderer.invoke('discord:stop').catch(console.error)
@@ -187,12 +170,8 @@ function MainApp() {
         }
       } catch (error) {
         console.error('[App] Discord stream sync failed:', error)
-        if (mediaRecorderRef.current) {
-          try { mediaRecorderRef.current.stop() } catch (e) {
-            console.warn('[App] Discord recorder was already stopped:', e)
-          }
-          mediaRecorderRef.current = null
-        }
+        stopPcmCapture()
+        discordCaptureActiveRef.current = false
         discordStreamActiveRef.current = false
         window.ipcRenderer.invoke('discord:stop').catch(console.error)
         setLocalMute(false)
@@ -208,7 +187,7 @@ function MainApp() {
       active = false
       if (debounceTimer) clearTimeout(debounceTimer)
     }
-  }, [isPlaying, currentTrack, discordSyncSignal, getAudioStream, setLocalMute])
+  }, [isPlaying, currentTrack, discordSyncSignal, setLocalMute, startPcmCapture, stopPcmCapture])
 
   const handleImportClick = async () => {
     const data = await readImportFile()

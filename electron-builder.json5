@@ -7,7 +7,8 @@
   "asarUnpack": [
     "**/node_modules/yt-search/**",
     "**/node_modules/cheerio/**",
-    "**/node_modules/ffmpeg-static/**"
+    "**/node_modules/ffmpeg-static/**",
+    "**/node_modules/@discordjs/opus/prebuild/**"
   ],
   "productName": "NeonWave",
   // 694x694 png — electron-builder converts to ico/icns per platform

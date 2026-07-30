@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useRef, useState } from 'react'
 import { Play, Pause, SkipBack, SkipForward, Shuffle, Volume2, Music, Repeat, Repeat1, Sliders, AudioWaveform, Brain, Activity, Mic2, Film } from 'lucide-react'
 import styles from './Player.module.css'
 import { Track } from '../../hooks/useAudioPlayer'
@@ -45,6 +45,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
     const [isNorm, setIsNorm] = useState(false)
     const [radarPos, setRadarPos] = useState({ x: 0, z: 0 })
     const [activeTab, setActiveTab] = useState<'effects' | 'spatial'>('effects')
+    const [pendingSeekTime, setPendingSeekTime] = useState<number | null>(null)
+    const isPointerSeekingRef = useRef(false)
 
     const handleDistance = (val: number) => {
         setDistVal(val)
@@ -119,7 +121,8 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
         return `${m}:${s.toString().padStart(2, '0')}`
     }
 
-    const progressPercent = duration ? (currentTime / duration) * 100 : 0
+    const displayedTime = pendingSeekTime ?? currentTime
+    const progressPercent = duration ? (displayedTime / duration) * 100 : 0
     const sliderStyle = {
         background: `linear-gradient(to right, var(--accent-primary) ${progressPercent}%, rgba(255,255,255,0.1) ${progressPercent}%)`
     }
@@ -397,13 +400,40 @@ export const PlayerBar: React.FC<PlayerBarProps> = ({
                 </div>
 
                 <div className={styles.progressContainer}>
-                    <span>{formatTime(currentTime)}</span>
+                    <span>{formatTime(displayedTime)}</span>
                     <input
                         type="range"
                         min={0}
                         max={duration || 100}
-                        value={currentTime}
-                        onChange={(e) => onSeek(Number(e.target.value))}
+                        step={0.1}
+                        value={displayedTime}
+                        disabled={!currentTrack || !Number.isFinite(duration) || duration <= 0}
+                        onPointerDown={(e) => {
+                            isPointerSeekingRef.current = true
+                            e.currentTarget.setPointerCapture(e.pointerId)
+                            setPendingSeekTime(Number(e.currentTarget.value))
+                        }}
+                        onChange={(e) => {
+                            const nextTime = Number(e.target.value)
+                            setPendingSeekTime(nextTime)
+                            if (!isPointerSeekingRef.current) {
+                                onSeek(nextTime)
+                                setPendingSeekTime(null)
+                            }
+                        }}
+                        onPointerUp={(e) => {
+                            const nextTime = Number(e.currentTarget.value)
+                            isPointerSeekingRef.current = false
+                            onSeek(nextTime)
+                            setPendingSeekTime(null)
+                            if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+                                e.currentTarget.releasePointerCapture(e.pointerId)
+                            }
+                        }}
+                        onPointerCancel={() => {
+                            isPointerSeekingRef.current = false
+                            setPendingSeekTime(null)
+                        }}
                         className={styles.timeSlider}
                         style={sliderStyle}
                     />

@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, dialog, Notification, screen, protocol, net } from 'electron'
 import { createRequire } from 'node:module'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { fileURLToPath } from 'node:url'
+import { Readable } from 'node:stream'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
@@ -368,7 +369,63 @@ app.whenReady().then(() => {
       // Windows paths arrive as "/D:/dir/file" — strip the leading slash.
       // POSIX paths ("/home/user/file") must keep it.
       if (process.platform === 'win32') decodedPath = decodedPath.replace(/^\/+/, '')
-      upstream = await net.fetch(pathToFileURL(path.normalize(decodedPath)).toString(), fetchInit)
+      const filePath = path.normalize(decodedPath)
+      const stat = await fs.stat(filePath)
+      const fileSize = stat.size
+      const extension = path.extname(filePath).toLowerCase()
+      const contentTypes: Record<string, string> = {
+        '.mp3': 'audio/mpeg',
+        '.m4a': 'audio/mp4',
+        '.aac': 'audio/aac',
+        '.flac': 'audio/flac',
+        '.wav': 'audio/wav',
+        '.ogg': 'audio/ogg',
+        '.oga': 'audio/ogg',
+        '.mp4': 'video/mp4',
+        '.mkv': 'video/x-matroska',
+        '.webm': 'video/webm'
+      }
+      const headers = new Headers({
+        'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Content-Type': contentTypes[extension] || 'application/octet-stream'
+      })
+
+      let start = 0
+      let end = Math.max(0, fileSize - 1)
+      let status = 200
+
+      if (range) {
+        const match = /^bytes=(\d*)-(\d*)$/i.exec(range.trim())
+        if (!match || (!match[1] && !match[2])) {
+          headers.set('Content-Range', `bytes */${fileSize}`)
+          return new Response(null, { status: 416, headers })
+        }
+
+        if (!match[1]) {
+          const suffixLength = Number(match[2])
+          start = Math.max(0, fileSize - suffixLength)
+        } else {
+          start = Number(match[1])
+        }
+        if (match[2] && match[1]) end = Math.min(Number(match[2]), fileSize - 1)
+
+        if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start < 0 || start >= fileSize || end < start) {
+          headers.set('Content-Range', `bytes */${fileSize}`)
+          return new Response(null, { status: 416, headers })
+        }
+
+        status = 206
+        headers.set('Content-Range', `bytes ${start}-${end}/${fileSize}`)
+      }
+
+      headers.set('Content-Length', String(fileSize === 0 ? 0 : end - start + 1))
+      if (request.method === 'HEAD' || fileSize === 0) {
+        return new Response(null, { status, headers })
+      }
+
+      const body = Readable.toWeb(fsSync.createReadStream(filePath, { start, end })) as ReadableStream<Uint8Array>
+      return new Response(body, { status, headers })
     }
 
     const headers = new Headers(upstream.headers)
@@ -673,7 +730,7 @@ while ($true) {
 
   
   ipcMain.handle('discord:startStreamMode', async () => {
-    return await discordBot.playReceiverStream(ffmpegPath)
+    return await discordBot.playReceiverStream()
   })
 
   
@@ -913,14 +970,78 @@ while ($true) {
     }
   })
 
-  ipcMain.handle('files:readBuffer', async (_, filePath) => {
+  // Persistent metadata cache (userData/metadata-cache.json), keyed by
+  // "path\0mtime" so an edited/replaced file is re-scanned automatically.
+  // Avoids re-parsing every track's tags on every app launch.
+  const metaCachePath = path.join(app.getPath('userData'), 'metadata-cache.json')
+  let metaCache: Record<string, any> = {}
+  let metaCacheLoaded = false
+  let metaCacheDirty = false
+  let metaCacheFlushTimer: NodeJS.Timeout | null = null
+
+  const loadMetaCache = async () => {
+    if (metaCacheLoaded) return
+    metaCacheLoaded = true
     try {
-      const buffer = await fs.readFile(filePath)
-      return buffer
-    } catch (error) {
-      console.error('Error reading file:', error)
-      return null
+      metaCache = JSON.parse(await fs.readFile(metaCachePath, 'utf8'))
+    } catch {
+      metaCache = {}
     }
+  }
+
+  const scheduleMetaFlush = () => {
+    metaCacheDirty = true
+    if (metaCacheFlushTimer) return
+    metaCacheFlushTimer = setTimeout(async () => {
+      metaCacheFlushTimer = null
+      if (!metaCacheDirty) return
+      metaCacheDirty = false
+      try {
+        await fs.writeFile(metaCachePath, JSON.stringify(metaCache))
+      } catch (e) {
+        console.warn('[MetaCache] flush failed:', e)
+      }
+    }, 1500)
+  }
+
+  // Batch metadata read for a folder scan. Returns lightweight metadata for
+  // every path, hitting the disk parser only for new/changed files.
+  ipcMain.handle('files:getMetadataBatch', async (_, filePaths: string[]) => {
+    await loadMetaCache()
+    const results = await Promise.all((filePaths || []).map(async (filePath) => {
+      let mtime = 0
+      try {
+        mtime = (await fs.stat(filePath)).mtimeMs
+      } catch {
+        return null
+      }
+      const key = `${filePath}\0${Math.round(mtime)}`
+      const cached = metaCache[key]
+      if (cached) return { path: filePath, ...cached }
+
+      try {
+        const metadata = await mm.parseFile(filePath, { skipCovers: true })
+        const entry = {
+          title: metadata.common.title || null,
+          artist: metadata.common.artist || null,
+          album: metadata.common.album || null,
+          duration: metadata.format.duration || 0,
+          codec: metadata.format.codec || null,
+          bitrate: metadata.format.bitrate || null,
+          sampleRate: metadata.format.sampleRate || null
+        }
+        // Drop any older entry for this path (different mtime) before caching
+        for (const k of Object.keys(metaCache)) {
+          if (k.startsWith(`${filePath}\0`)) delete metaCache[k]
+        }
+        metaCache[key] = entry
+        scheduleMetaFlush()
+        return { path: filePath, ...entry }
+      } catch {
+        return { path: filePath, title: null, artist: null, album: null, duration: 0 }
+      }
+    }))
+    return results.filter(Boolean)
   })
 
   ipcMain.handle('files:readBufferPartial', async (_, filePath, maxBytes) => {
@@ -1002,19 +1123,7 @@ while ($true) {
     return activeWindowName
   })
 
-  ipcMain.handle('app:clear-memory', async () => {
-    try {
-      const { session } = require('electron')
-      await session.defaultSession.clearCache()
-      if (global.gc) {
-        global.gc()
-      }
-    } catch (e) {
-      console.warn("Memory clear failed:", e)
-    }
-  })
 
-  
   const YtDlpWrap = createRequire(import.meta.url)('yt-dlp-wrap').default
 
   

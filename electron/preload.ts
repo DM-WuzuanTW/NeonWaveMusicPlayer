@@ -23,8 +23,8 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   openDirectory: () => ipcRenderer.invoke('dialog:openDirectory'),
   listMusicFiles: (path: string) => ipcRenderer.invoke('files:listMusic', path),
   getAudioMetadata: (path: string, options?: { loadArtwork: boolean }) => ipcRenderer.invoke('files:getMetadata', path, options),
+  getAudioMetadataBatch: (paths: string[]) => ipcRenderer.invoke('files:getMetadataBatch', paths),
   getAudioArtwork: (path: string) => ipcRenderer.invoke('files:getArtwork', path),
-  readFileBuffer: (path: string) => ipcRenderer.invoke('files:readBuffer', path),
   readFileBufferPartial: (path: string, maxBytes: number) => ipcRenderer.invoke('files:readBufferPartial', path, maxBytes),
 
   

@@ -14,6 +14,8 @@ export class AudioEngine {
     
     private streamDestination: MediaStreamAudioDestinationNode
     private isLocalMuted: boolean = false
+    private pcmCaptureNode: ScriptProcessorNode | null = null
+    private pcmCaptureSink: GainNode | null = null
 
     
     private convolver: ConvolverNode
@@ -26,7 +28,9 @@ export class AudioEngine {
     private intervalId: number | null = null
 
     constructor() {
-        this.context = new (window.AudioContext || (window as any).webkitAudioContext)()
+        this.context = new (window.AudioContext || (window as any).webkitAudioContext)({
+            sampleRate: 48000
+        })
 
         
         this.panner = this.context.createPanner()
@@ -399,6 +403,59 @@ export class AudioEngine {
     
     getAudioStream(): MediaStream {
         return this.streamDestination.stream
+    }
+
+    startPcmCapture(onChunk: (chunk: ArrayBuffer) => void) {
+        this.stopPcmCapture()
+
+        // Discord raw resources expect interleaved signed 16-bit, 48 kHz stereo
+        // PCM. Capturing here avoids segmented WebM/Opus demuxing stalls.
+        const captureNode = this.context.createScriptProcessor(2048, 2, 2)
+        const silentSink = this.context.createGain()
+        silentSink.gain.value = 0
+
+        captureNode.onaudioprocess = event => {
+            const input = event.inputBuffer
+            const frames = input.length
+            const left = input.getChannelData(0)
+            const right = input.numberOfChannels > 1 ? input.getChannelData(1) : left
+            const pcm = new Int16Array(frames * 2)
+
+            for (let i = 0; i < frames; i++) {
+                const leftSample = Math.max(-1, Math.min(1, left[i]))
+                const rightSample = Math.max(-1, Math.min(1, right[i]))
+                pcm[i * 2] = leftSample < 0 ? leftSample * 0x8000 : leftSample * 0x7fff
+                pcm[i * 2 + 1] = rightSample < 0 ? rightSample * 0x8000 : rightSample * 0x7fff
+            }
+
+            onChunk(pcm.buffer)
+        }
+
+        this.compressor.connect(captureNode)
+        captureNode.connect(silentSink)
+        silentSink.connect(this.context.destination)
+        this.pcmCaptureNode = captureNode
+        this.pcmCaptureSink = silentSink
+        void this.resume()
+    }
+
+    stopPcmCapture() {
+        if (this.pcmCaptureNode) {
+            this.pcmCaptureNode.onaudioprocess = null
+            try { this.compressor.disconnect(this.pcmCaptureNode) } catch (e) {
+                // The capture graph may already be disconnected during teardown.
+            }
+            try { this.pcmCaptureNode.disconnect() } catch (e) {
+                // The capture graph may already be disconnected during teardown.
+            }
+            this.pcmCaptureNode = null
+        }
+        if (this.pcmCaptureSink) {
+            try { this.pcmCaptureSink.disconnect() } catch (e) {
+                // The capture graph may already be disconnected during teardown.
+            }
+            this.pcmCaptureSink = null
+        }
     }
 
     setLocalMute(muted: boolean) {

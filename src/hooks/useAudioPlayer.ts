@@ -381,11 +381,6 @@ export function useAudioPlayer(contextMode?: string) {
         const onDurationChange = () => setDuration(audio.duration)
         const onEnded = () => {
             handleNext(true)
-                .finally(() => {
-                    setTimeout(() => {
-                        window.ipcRenderer.invoke('app:clear-memory').catch(() => {})
-                    }, 1000)
-                })
         }
         const onPlay = () => {
             isPlaybackPendingRef.current = false
@@ -551,8 +546,23 @@ export function useAudioPlayer(contextMode?: string) {
             console.warn("[Audio] Playback was slightly interrupted or blocked:", e);
         }
     }
-    const seek = (time: number) => { audioRef.current.currentTime = time; setCurrentTime(time) }
+    const seek = useCallback((time: number) => {
+        const audio = audioRef.current
+        if (!Number.isFinite(time) || audio.readyState === HTMLMediaElement.HAVE_NOTHING) return
+
+        const mediaDuration = Number.isFinite(audio.duration) ? audio.duration : duration
+        const nextTime = Math.min(Math.max(time, 0), mediaDuration > 0 ? mediaDuration : time)
+        audio.currentTime = nextTime
+        setCurrentTime(nextTime)
+    }, [duration])
     const getAudioStream = useCallback(() => engineRef.current?.getAudioStream(), [])
+    const startPcmCapture = useCallback((onChunk: (chunk: ArrayBuffer) => void) => {
+        engineRef.current?.startPcmCapture(onChunk)
+        return !!engineRef.current
+    }, [])
+    const stopPcmCapture = useCallback(() => {
+        engineRef.current?.stopPcmCapture()
+    }, [])
     const getMediaElement = useCallback(() => audioRef.current, [])
     const setLocalMute = useCallback((muted: boolean) => {
         engineRef.current?.setLocalMute(muted)
@@ -590,6 +600,8 @@ export function useAudioPlayer(contextMode?: string) {
         isMuted,
         setIsMuted,
         getAudioStream,
+        startPcmCapture,
+        stopPcmCapture,
         getMediaElement,
         setLocalMute
     }
