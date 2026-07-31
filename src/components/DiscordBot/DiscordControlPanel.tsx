@@ -24,6 +24,31 @@ interface SavedBot {
     avatar: string | null
 }
 
+interface BotPlayback {
+    isPlaying: boolean
+    playbackStatus: string
+    title: string
+    artist: string
+    streamInputBytes: number
+    streamDecodedBytes: number
+    streamError: string | null
+}
+
+const getPlaybackMessage = (playback: BotPlayback) => {
+    if (playback.streamError) return playback.streamError
+    switch (playback.playbackStatus) {
+        case 'playing': return playback.artist || '正在串流到語音頻道'
+        case 'buffering': return '正在緩衝 Discord 音訊…'
+        case 'paused': return '已暫停'
+        case 'autopaused': return '語音訂閱暫停，正在等待重新連線…'
+        case 'idle':
+            return playback.streamInputBytes > 0
+                ? '已收到音訊，等待 Discord 播放器啟動…'
+                : '等待本機播放器送出音訊…'
+        default: return `Discord 狀態：${playback.playbackStatus || '未知'}`
+    }
+}
+
 const getErrorMessage = (error: unknown, fallback: string) => {
     return error instanceof Error ? error.message : fallback
 }
@@ -69,7 +94,7 @@ export const DiscordControlPanel: React.FC = () => {
     const [isAddingNew, setIsAddingNew] = useState(false)
 
     // Live playback state of the bot, polled while on the connected screen
-    const [botPlayback, setBotPlayback] = useState<{ isPlaying: boolean; title: string; artist: string } | null>(null)
+    const [botPlayback, setBotPlayback] = useState<BotPlayback | null>(null)
 
     
     const [modal, setModal] = useState({
@@ -447,8 +472,12 @@ export const DiscordControlPanel: React.FC = () => {
                 if (stopped) return
                 setBotPlayback({
                     isPlaying: !!status.isPlaying,
+                    playbackStatus: status.playbackStatus || 'idle',
                     title: status.nowPlaying?.title || '',
-                    artist: status.nowPlaying?.artist || ''
+                    artist: status.nowPlaying?.artist || '',
+                    streamInputBytes: Number(status.streamInputBytes || 0),
+                    streamDecodedBytes: Number(status.streamDecodedBytes || 0),
+                    streamError: status.streamError || null
                 })
             } catch {
                 // Keep the last known state on transient IPC failures.
@@ -677,9 +706,7 @@ export const DiscordControlPanel: React.FC = () => {
                         <>
                             <div className={styles.nowPlayingTitle}>{botPlayback.title}</div>
                             <div className={styles.nowPlayingSub}>
-                                {botPlayback.isPlaying
-                                    ? (botPlayback.artist || '正在串流到語音頻道')
-                                    : '已暫停'}
+                                {getPlaybackMessage(botPlayback)}
                             </div>
                         </>
                     ) : (

@@ -37,6 +37,10 @@ export class DiscordBotManager {
     private nowPlaying: { title: string; artist: string } | null = null;
     private lastPresenceKey = '';
     private lastPresenceAt = 0;
+    private streamInputBytes = 0;
+    private streamDecodedBytes = 0;
+    private lastStreamError: string | null = null;
+    private streamHealthTimer: ReturnType<typeof setTimeout> | null = null;
     public isConnected = false;
     public currentGuildId: string | null = null;
     public currentChannelId: string | null = null;
@@ -44,9 +48,15 @@ export class DiscordBotManager {
     constructor() {
         this.player.on('error', error => {
             console.error('[DiscordBot] Audio Player Error:', error.message);
+            this.lastStreamError = `Discord 播放器錯誤：${error.message}`;
         });
         this.player.on(AudioPlayerStatus.Playing, () => {
             console.log('[DiscordBot] Voice stream is playing');
+            this.lastStreamError = null;
+            if (this.streamHealthTimer) {
+                clearTimeout(this.streamHealthTimer);
+                this.streamHealthTimer = null;
+            }
         });
         this.player.on(AudioPlayerStatus.Idle, () => {
             console.log('[DiscordBot] Voice stream is idle');
@@ -320,6 +330,10 @@ export class DiscordBotManager {
             currentGuildName: this.client?.guilds.cache.get(this.currentGuildId!)?.name || null,
             currentChannelName: this.client?.guilds.cache.get(this.currentGuildId!)?.channels.cache.get(this.currentChannelId!)?.name || null,
             isPlaying: this.player.state.status === AudioPlayerStatus.Playing,
+            playbackStatus: this.player.state.status,
+            streamInputBytes: this.streamInputBytes,
+            streamDecodedBytes: this.streamDecodedBytes,
+            streamError: this.lastStreamError,
             nowPlaying: this.nowPlaying
         };
     }
@@ -504,6 +518,10 @@ export class DiscordBotManager {
     }
 
     stop() {
+        if (this.streamHealthTimer) {
+            clearTimeout(this.streamHealthTimer);
+            this.streamHealthTimer = null;
+        }
         this.player.stop();
         this.killCurrentProcess();
         if (this.streamInput && !this.streamInput.destroyed) {
@@ -533,6 +551,9 @@ export class DiscordBotManager {
 
         const streamInput = new PassThrough();
         this.streamInput = streamInput;
+        this.streamInputBytes = 0;
+        this.streamDecodedBytes = 0;
+        this.lastStreamError = null;
         streamInput.on('error', error => {
             console.error('[DiscordBot] Voice input stream error:', error);
         });
@@ -562,15 +583,19 @@ export class DiscordBotManager {
             }
         });
         ffmpegProcess.stderr?.on('data', chunk => {
-            console.error('[DiscordBot] FFmpeg stream error:', chunk.toString().trim());
+            const message = chunk.toString().trim();
+            console.error('[DiscordBot] FFmpeg stream error:', message);
+            if (message) this.lastStreamError = `FFmpeg：${message.slice(-500)}`;
         });
         ffmpegProcess.on('error', error => {
             console.error('[DiscordBot] FFmpeg spawn error:', error);
             if (this.streamInput === streamInput) streamInput.destroy(error);
         });
         ffmpegProcess.on('close', code => {
-            if (code && code !== 0) {
+            const wasCurrentProcess = this.currentProcess === ffmpegProcess;
+            if (wasCurrentProcess && code && code !== 0) {
                 console.error(`[DiscordBot] FFmpeg stream exited with code ${code}`);
+                this.lastStreamError ||= `FFmpeg 已停止（代碼 ${code}）`;
             }
             if (this.streamInput === streamInput) streamInput.destroy();
             if (this.currentProcess === ffmpegProcess) this.currentProcess = null;
@@ -582,10 +607,31 @@ export class DiscordBotManager {
             inputType: StreamType.Raw,
             inlineVolume: true
         });
+        ffmpegProcess.stdout.on('data', chunk => {
+            this.streamDecodedBytes += chunk.length;
+        });
 
         this.currentResource = resource;
         resource.volume?.setVolume(this.lastVolume);
+        const subscription = this.currentConnection.subscribe(this.player);
+        if (!subscription) {
+            this.stop();
+            throw new Error('Discord voice connection rejected the audio player subscription');
+        }
         this.player.play(resource);
+
+        this.streamHealthTimer = setTimeout(() => {
+            this.streamHealthTimer = null;
+            if (this.player.state.status === AudioPlayerStatus.Playing) return;
+
+            if (this.streamInputBytes === 0) {
+                this.lastStreamError = '尚未從本機播放器收到音訊資料';
+            } else if (this.streamDecodedBytes === 0) {
+                this.lastStreamError = '已收到音訊，但 FFmpeg 尚未解碼出 PCM';
+            } else {
+                this.lastStreamError = `音訊已解碼，但 Discord 播放器停在 ${this.player.state.status}`;
+            }
+        }, 8_000);
 
         return true;
     }
@@ -593,6 +639,7 @@ export class DiscordBotManager {
     writeAudioChunk(buffer: Uint8Array) {
         if (this.streamInput && !this.streamInput.destroyed) {
             try {
+                this.streamInputBytes += buffer.byteLength;
                 this.streamInput.write(buffer);
             } catch (e) {
                 // Stream teardown can race with disconnect.
