@@ -62,6 +62,10 @@ function MainApp() {
   const [discordSyncSignal, setDiscordSyncSignal] = useState(0)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const discordStreamActiveRef = useRef(false)
+  const discordStreamStartedAtRef = useRef(0)
+  const discordSyncInFlightRef = useRef(false)
+  const discordRestartHistoryRef = useRef<number[]>([])
+  const discordRestartBlockedUntilRef = useRef(0)
 
   // Listen for playback toggle commands from the mini player (PIP)
   useEffect(() => {
@@ -110,12 +114,72 @@ function MainApp() {
     return () => window.removeEventListener('neonwave:discord-bot-state-changed', triggerDiscordSync)
   }, [])
 
-  // Discord stream sync with debounce to prevent rapid re-initialization on quick track changes
+  // Keep the renderer capture, FFmpeg decoder and Discord player healthy as one
+  // pipeline. A MediaRecorder can remain "recording" after FFmpeg/player exit,
+  // so recorder state alone is not a sufficient liveness check.
   useEffect(() => {
     let active = true
     let debounceTimer: ReturnType<typeof setTimeout> | null = null
+    let healthTimer: ReturnType<typeof setInterval> | null = null
+
+    const destroyRecorder = () => {
+      const recorder = mediaRecorderRef.current
+      if (!recorder) return
+      // Do not let the final chunk from an old WebM session enter the newly
+      // created FFmpeg process; it does not contain a fresh initialization header.
+      recorder.ondataavailable = null
+      recorder.onerror = null
+      if (recorder.state !== 'inactive') recorder.stop()
+      mediaRecorderRef.current = null
+    }
+
+    const stopDiscordPipeline = async () => {
+      destroyRecorder()
+      discordStreamActiveRef.current = false
+      discordStreamStartedAtRef.current = 0
+      await window.ipcRenderer.invoke('discord:stop').catch(console.error)
+    }
+
+    const startDiscordPipeline = async () => {
+      await window.ipcRenderer.invoke('discord:startStreamMode')
+
+      const stream = getAudioStream()
+      if (!stream) throw new Error('Discord stream unavailable from AudioEngine')
+
+      const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
+          ? 'audio/webm'
+          : ''
+      const recorder = new MediaRecorder(stream, {
+        ...(preferredMime ? { mimeType: preferredMime } : {}),
+        audioBitsPerSecond: 96_000
+      })
+
+      let chunkWrite = Promise.resolve()
+      recorder.ondataavailable = event => {
+        if (event.data.size === 0) return
+        chunkWrite = chunkWrite.then(async () => {
+          const buffer = await event.data.arrayBuffer()
+          if (mediaRecorderRef.current === recorder) {
+            window.ipcRenderer.send('discord:audio-chunk', buffer)
+          }
+        }).catch(error => {
+          console.error('[App] Failed to send Discord audio chunk:', error)
+        })
+      }
+      recorder.onerror = event => {
+        console.error('[App] Discord MediaRecorder error:', event)
+      }
+      recorder.start(250)
+      mediaRecorderRef.current = recorder
+      discordStreamActiveRef.current = true
+      discordStreamStartedAtRef.current = Date.now()
+    }
 
     const handleSync = async () => {
+      if (discordSyncInFlightRef.current) return
+      discordSyncInFlightRef.current = true
       try {
         const status = await window.ipcRenderer.invoke('discord:status')
 
@@ -123,69 +187,73 @@ function MainApp() {
 
         if (status.isConnected && status.currentChannelId) {
           if (isPlaying) {
-            if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
-              await window.ipcRenderer.invoke('discord:startStreamMode')
+            const now = Date.now()
+            const streamAge = now - discordStreamStartedAtRef.current
+            const inputStalled = status.streamLastInputAt > 0 && now - status.streamLastInputAt > 6_000
+            const decodeStalled = status.streamLastDecodedAt > 0 && now - status.streamLastDecodedAt > 6_000
+            const backendFailed = discordStreamActiveRef.current && streamAge > 8_000 && (
+              !!status.streamError ||
+              status.playbackStatus === 'idle' ||
+              status.playbackStatus === 'autopaused' ||
+              inputStalled ||
+              decodeStalled
+            )
 
-              const stream = getAudioStream()
-              if (!stream) throw new Error('Discord stream unavailable from AudioEngine')
-
-              const preferredMime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-                ? 'audio/webm;codecs=opus'
-                : MediaRecorder.isTypeSupported('audio/webm')
-                  ? 'audio/webm'
-                  : ''
-              const recorder = new MediaRecorder(stream, {
-                ...(preferredMime ? { mimeType: preferredMime } : {}),
-                audioBitsPerSecond: 96_000
+            if (backendFailed) {
+              console.warn('[App] Discord pipeline stalled; rebuilding it', {
+                playbackStatus: status.playbackStatus,
+                streamError: status.streamError,
+                inputStalled,
+                decodeStalled
               })
+              setLocalMute(false)
+              await stopDiscordPipeline()
 
-              let chunkWrite = Promise.resolve()
-              recorder.ondataavailable = event => {
-                if (event.data.size === 0) return
-                chunkWrite = chunkWrite.then(async () => {
-                  const buffer = await event.data.arrayBuffer()
-                  window.ipcRenderer.send('discord:audio-chunk', buffer)
-                }).catch(error => {
-                  console.error('[App] Failed to send Discord audio chunk:', error)
-                })
+              const recentRestarts = discordRestartHistoryRef.current.filter(time => now - time < 60_000)
+              discordRestartHistoryRef.current = recentRestarts
+              if (recentRestarts.length >= 3) {
+                console.error('[App] Discord pipeline restart limit reached; keeping local audio enabled')
+                discordRestartBlockedUntilRef.current = now + 60_000
+                return
               }
-              recorder.onerror = event => {
-                console.error('[App] Discord MediaRecorder error:', event)
+              discordRestartHistoryRef.current.push(now)
+            }
+
+            let startedNow = false
+            if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+              if (now < discordRestartBlockedUntilRef.current) {
+                setLocalMute(false)
+                return
               }
-              recorder.start(250)
-              mediaRecorderRef.current = recorder
-              discordStreamActiveRef.current = true
+              await startDiscordPipeline()
+              startedNow = true
             } else if (mediaRecorderRef.current.state === 'paused') {
               mediaRecorderRef.current.resume()
             }
 
             await window.ipcRenderer.invoke('discord:resume')
-            setLocalMute(true)
+            // Keep local playback audible during startup/recovery. Mute it only
+            // after Discord confirms that packets are actually playing.
+            setLocalMute(!startedNow && status.playbackStatus === 'playing' && !backendFailed)
+            if (status.playbackStatus === 'playing' && !backendFailed) {
+              discordRestartHistoryRef.current = []
+              discordRestartBlockedUntilRef.current = 0
+            }
             window.ipcRenderer.invoke('discord:setVolume', 100).catch(console.error)
           } else if (mediaRecorderRef.current?.state === 'recording') {
             mediaRecorderRef.current.pause()
             await window.ipcRenderer.invoke('discord:pause')
           }
         } else {
-          if (mediaRecorderRef.current) {
-            if (mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop()
-            mediaRecorderRef.current = null
-          }
-          if (discordStreamActiveRef.current) {
-            window.ipcRenderer.invoke('discord:stop').catch(console.error)
-          }
-          discordStreamActiveRef.current = false
+          await stopDiscordPipeline()
           setLocalMute(false)
         }
       } catch (error) {
         console.error('[App] Discord stream sync failed:', error)
-        if (mediaRecorderRef.current) {
-          if (mediaRecorderRef.current.state !== 'inactive') mediaRecorderRef.current.stop()
-          mediaRecorderRef.current = null
-        }
-        discordStreamActiveRef.current = false
-        window.ipcRenderer.invoke('discord:stop').catch(console.error)
+        await stopDiscordPipeline()
         setLocalMute(false)
+      } finally {
+        discordSyncInFlightRef.current = false
       }
     }
 
@@ -193,10 +261,14 @@ function MainApp() {
     debounceTimer = setTimeout(() => {
       if (active) handleSync()
     }, 300)
+    healthTimer = setInterval(() => {
+      if (active) handleSync()
+    }, 2_000)
 
     return () => {
       active = false
       if (debounceTimer) clearTimeout(debounceTimer)
+      if (healthTimer) clearInterval(healthTimer)
     }
   }, [isPlaying, currentTrack, discordSyncSignal, getAudioStream, setLocalMute])
 

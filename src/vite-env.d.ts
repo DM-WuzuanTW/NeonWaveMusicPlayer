@@ -59,7 +59,7 @@ interface Window {
         invoke(channel: 'discord:stop'): Promise<void>
         invoke(channel: 'discord:setVolume', volume: number): Promise<boolean>
         invoke(channel: 'discord:startStreamMode'): Promise<boolean>
-        invoke(channel: 'discord:status'): Promise<{ isConnected: boolean; username: string | null; avatar: string | null; currentGuildId: string | null; currentChannelId: string | null; currentGuildName: string | null; currentChannelName: string | null; isPlaying: boolean; playbackStatus: string; streamInputBytes: number; streamDecodedBytes: number; streamError: string | null; nowPlaying: { title: string; artist: string } | null }>
+        invoke(channel: 'discord:status'): Promise<{ isConnected: boolean; username: string | null; avatar: string | null; currentGuildId: string | null; currentChannelId: string | null; currentGuildName: string | null; currentChannelName: string | null; isPlaying: boolean; playbackStatus: string; streamInputBytes: number; streamDecodedBytes: number; streamLastInputAt: number; streamLastDecodedAt: number; streamError: string | null; nowPlaying: { title: string; artist: string } | null }>
 
         on(channel: string, listener: (...args: any[]) => void): void
         off(channel: string, listener: (...args: any[]) => void): void

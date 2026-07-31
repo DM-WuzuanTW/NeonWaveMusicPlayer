@@ -39,6 +39,8 @@ export class DiscordBotManager {
     private lastPresenceAt = 0;
     private streamInputBytes = 0;
     private streamDecodedBytes = 0;
+    private streamLastInputAt = 0;
+    private streamLastDecodedAt = 0;
     private lastStreamError: string | null = null;
     private streamHealthTimer: ReturnType<typeof setTimeout> | null = null;
     public isConnected = false;
@@ -333,6 +335,8 @@ export class DiscordBotManager {
             playbackStatus: this.player.state.status,
             streamInputBytes: this.streamInputBytes,
             streamDecodedBytes: this.streamDecodedBytes,
+            streamLastInputAt: this.streamLastInputAt,
+            streamLastDecodedAt: this.streamLastDecodedAt,
             streamError: this.lastStreamError,
             nowPlaying: this.nowPlaying
         };
@@ -553,6 +557,8 @@ export class DiscordBotManager {
         this.streamInput = streamInput;
         this.streamInputBytes = 0;
         this.streamDecodedBytes = 0;
+        this.streamLastInputAt = 0;
+        this.streamLastDecodedAt = 0;
         this.lastStreamError = null;
         streamInput.on('error', error => {
             console.error('[DiscordBot] Voice input stream error:', error);
@@ -609,6 +615,7 @@ export class DiscordBotManager {
         });
         ffmpegProcess.stdout.on('data', chunk => {
             this.streamDecodedBytes += chunk.length;
+            this.streamLastDecodedAt = Date.now();
         });
 
         this.currentResource = resource;
@@ -640,6 +647,7 @@ export class DiscordBotManager {
         if (this.streamInput && !this.streamInput.destroyed) {
             try {
                 this.streamInputBytes += buffer.byteLength;
+                this.streamLastInputAt = Date.now();
                 this.streamInput.write(buffer);
             } catch (e) {
                 // Stream teardown can race with disconnect.
