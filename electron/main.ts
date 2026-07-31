@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, dialog, Notification, screen, protocol, net } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, Notification, screen, protocol, net, powerSaveBlocker } from 'electron'
 import { createRequire } from 'node:module'
 import { fileURLToPath } from 'node:url'
 import { Readable } from 'node:stream'
@@ -25,6 +25,14 @@ protocol.registerSchemesAsPrivileged([
 if (process.env.NW_REMOTE_DEBUG) {
   app.commandLine.appendSwitch('remote-debugging-port', process.env.NW_REMOTE_DEBUG)
 }
+
+// Music capture must keep running while the player is minimized, covered by
+// Discord, or otherwise not the foreground window. BrowserWindow's
+// backgroundThrottling option covers most cases; these switches also protect
+// Chromium's renderer, timer and occlusion paths on Windows.
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
 
 const require = createRequire(import.meta.url)
 let ffmpegPath = require('ffmpeg-static')
@@ -168,6 +176,20 @@ let activeWindowName = "unknown"
 let monitorProcess: any = null
 let discordBot: any = null
 let partyRoomService: PartyRoomService | null = null
+let discordPowerSaveBlockerId: number | null = null
+
+function startDiscordPowerSaveBlocker() {
+  if (discordPowerSaveBlockerId !== null && powerSaveBlocker.isStarted(discordPowerSaveBlockerId)) return
+  discordPowerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension')
+  console.log('[DiscordBot] Background playback protection enabled')
+}
+
+function stopDiscordPowerSaveBlocker() {
+  if (discordPowerSaveBlockerId !== null && powerSaveBlocker.isStarted(discordPowerSaveBlockerId)) {
+    powerSaveBlocker.stop(discordPowerSaveBlockerId)
+  }
+  discordPowerSaveBlockerId = null
+}
 
 function createWindow() {
   // Frameless title bar with overlay controls works on Windows/macOS.
@@ -691,15 +713,21 @@ while ($true) {
   })
 
   ipcMain.handle('discord:join', async (_, guildId, channelId) => {
-    return await discordBot.joinChannel(guildId, channelId)
+    const joined = await discordBot.joinChannel(guildId, channelId)
+    if (joined) startDiscordPowerSaveBlocker()
+    return joined
   })
 
   ipcMain.handle('discord:leave', async () => {
-    return await discordBot.leaveChannel()
+    const left = await discordBot.leaveChannel()
+    stopDiscordPowerSaveBlocker()
+    return left
   })
 
   ipcMain.handle('discord:disconnect', async () => {
-    return await discordBot.disconnect()
+    const result = await discordBot.disconnect()
+    stopDiscordPowerSaveBlocker()
+    return result
   })
 
   ipcMain.handle('discord:play', async (_, filePath, startTime = 0) => {

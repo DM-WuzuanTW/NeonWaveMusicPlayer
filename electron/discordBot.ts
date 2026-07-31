@@ -43,6 +43,10 @@ export class DiscordBotManager {
     private streamLastDecodedAt = 0;
     private lastStreamError: string | null = null;
     private streamHealthTimer: ReturnType<typeof setTimeout> | null = null;
+    private desiredGuildId: string | null = null;
+    private desiredChannelId: string | null = null;
+    private voiceReconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    private voiceReconnectAttempts = 0;
     public isConnected = false;
     public currentGuildId: string | null = null;
     public currentChannelId: string | null = null;
@@ -233,13 +237,20 @@ export class DiscordBotManager {
             throw new Error(`Bot is missing voice permission(s): ${missingPermissions.join(', ')}`);
         }
 
+        // Remember the requested channel independently from the live voice
+        // connection. An unexpected drop must not be treated as a user leave.
+        this.desiredGuildId = guildId;
+        this.desiredChannelId = channelId;
+        this.clearVoiceReconnectTimer();
+
         try {
             if (this.currentConnection) {
                 this.stop();
-                try { this.currentConnection.destroy(); } catch {
+                const oldConnection = this.currentConnection;
+                this.currentConnection = null;
+                try { oldConnection.destroy(); } catch {
                     // Already disconnected.
                 }
-                this.currentConnection = null;
             }
 
             const connection = joinVoiceChannel({
@@ -263,22 +274,22 @@ export class DiscordBotManager {
                         ]);
                         
                     } catch (error) {
-                        
                         if (this.currentConnection === connection) {
+                            // Detach before destroy so the destroyed event cannot
+                            // erase a newer connection created by the retry.
+                            this.currentConnection = null;
+                            this.stop();
                             try { connection.destroy(); } catch {
                                 // Already disconnected.
                             }
-                            this.currentConnection = null;
-                            this.currentChannelId = null;
-                            this.currentGuildId = null;
+                            this.scheduleVoiceReconnect('voice connection disconnected');
                         }
                     }
                 } else if (status === 'destroyed') {
                     if (this.currentConnection === connection) {
                         this.currentConnection = null;
-                        this.currentChannelId = null;
-                        this.currentGuildId = null;
                         this.stop();
+                        this.scheduleVoiceReconnect('voice connection destroyed');
                     }
                 }
             });
@@ -288,6 +299,7 @@ export class DiscordBotManager {
 
             this.currentGuildId = guildId;
             this.currentChannelId = channelId;
+            this.voiceReconnectAttempts = 0;
             const voiceState = guild.members.me?.voice;
             if (voiceState?.serverMute) {
                 await this.leaveChannel();
@@ -302,16 +314,50 @@ export class DiscordBotManager {
     }
 
     async leaveChannel() {
+        this.desiredGuildId = null;
+        this.desiredChannelId = null;
+        this.voiceReconnectAttempts = 0;
+        this.clearVoiceReconnectTimer();
         this.stop();
         this.clearBotPresence();
+        const hadConnection = !!this.currentConnection;
         if (this.currentConnection) {
-            this.currentConnection.destroy();
+            const connection = this.currentConnection;
             this.currentConnection = null;
-            this.currentGuildId = null;
-            this.currentChannelId = null;
-            return true;
+            connection.destroy();
         }
-        return false;
+        this.currentGuildId = null;
+        this.currentChannelId = null;
+        return hadConnection;
+    }
+
+    private clearVoiceReconnectTimer() {
+        if (this.voiceReconnectTimer) {
+            clearTimeout(this.voiceReconnectTimer);
+            this.voiceReconnectTimer = null;
+        }
+    }
+
+    private scheduleVoiceReconnect(reason: string) {
+        if (this.voiceReconnectTimer || !this.desiredGuildId || !this.desiredChannelId) return;
+
+        const guildId = this.desiredGuildId;
+        const channelId = this.desiredChannelId;
+        const delay = Math.min(30_000, 2_000 * Math.pow(2, Math.min(this.voiceReconnectAttempts, 4)));
+        this.voiceReconnectAttempts += 1;
+        console.warn(`[DiscordBot] ${reason}; rejoining voice in ${delay}ms (attempt ${this.voiceReconnectAttempts})`);
+
+        this.voiceReconnectTimer = setTimeout(async () => {
+            this.voiceReconnectTimer = null;
+            if (this.desiredGuildId !== guildId || this.desiredChannelId !== channelId) return;
+            try {
+                await this.joinChannel(guildId, channelId);
+                console.log('[DiscordBot] Voice connection automatically restored');
+            } catch (error) {
+                console.error('[DiscordBot] Automatic voice reconnect failed:', error);
+                this.scheduleVoiceReconnect('automatic reconnect failed');
+            }
+        }, delay);
     }
 
     async disconnect() {
