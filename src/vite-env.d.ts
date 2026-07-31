@@ -53,7 +53,7 @@ interface Window {
         invoke(channel: 'discord:getChannels', guildId: string): Promise<any[]>
         invoke(channel: 'discord:join', guildId: string, channelId: string): Promise<boolean>
         invoke(channel: 'discord:leave'): Promise<boolean>
-        invoke(channel: 'discord:play', filePath: string): Promise<void>
+        invoke(channel: 'discord:play', filePath: string, startTime?: number): Promise<void>
         invoke(channel: 'discord:pause'): Promise<void>
         invoke(channel: 'discord:resume'): Promise<void>
         invoke(channel: 'discord:stop'): Promise<void>

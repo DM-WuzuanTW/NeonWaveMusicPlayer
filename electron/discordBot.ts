@@ -411,9 +411,7 @@ export class DiscordBotManager {
         this.nextVoiceJoinAllowedAt = Math.max(this.nextVoiceJoinAllowedAt, retryAt);
     }
 
-    async playFile(filePath: string, ffmpegPath?: string) {
-        this.killCurrentProcess(); 
-
+    async playFile(filePath: string, ffmpegPath?: string, startTime = 0) {
         if (!this.currentConnection) {
             throw new Error('No active voice connection. Please join a channel first.');
         }
@@ -423,6 +421,9 @@ export class DiscordBotManager {
         if (connState === 'destroyed' || connState === 'disconnected') {
             throw new Error(`Voice connection is ${connState}. Cannot play audio.`);
         }
+
+        await entersState(this.currentConnection, VoiceConnectionStatus.Ready, 15_000);
+        this.stop();
 
         if (!ffmpegPath) {
             const resource = createAudioResource(filePath, {
@@ -438,9 +439,14 @@ export class DiscordBotManager {
         const { spawn } = await import('node:child_process');
 
         const args = [
-            '-i', filePath,
+            '-nostdin',
+            '-hide_banner',
             '-analyzeduration', '0',
-            '-loglevel', '0',
+            '-loglevel', 'error',
+            ...(Number.isFinite(startTime) && startTime > 0 ? ['-ss', String(startTime)] : []),
+            '-i', filePath,
+            '-vn',
+            '-acodec', 'pcm_s16le',
             '-f', 's16le',
             '-ar', '48000',
             '-ac', '2',
@@ -450,21 +456,22 @@ export class DiscordBotManager {
         const ffmpegProcess = spawn(ffmpegPath, args);
         this.currentProcess = ffmpegProcess;
 
-        let hasStarted = false;
+        let stderr = '';
 
         ffmpegProcess.on('error', (err) => {
             console.error('[DiscordBot] FFmpeg Spawn Error:', err);
         });
 
-        ffmpegProcess.on('close', () => {
+        ffmpegProcess.stderr?.on('data', chunk => {
+            stderr = (stderr + chunk.toString()).slice(-4_000);
+        });
+
+        ffmpegProcess.on('close', code => {
             if (this.currentProcess === ffmpegProcess) {
                 this.currentProcess = null;
             }
-        });
-
-        ffmpegProcess.stdout?.on('data', () => {
-            if (!hasStarted) {
-                hasStarted = true;
+            if (code && code !== 0) {
+                console.error(`[DiscordBot] FFmpeg exited with code ${code}: ${stderr || 'unknown error'}`);
             }
         });
 
@@ -479,6 +486,13 @@ export class DiscordBotManager {
         resource.volume?.setVolume(this.lastVolume);
 
         this.player.play(resource);
+        try {
+            await entersState(this.player, AudioPlayerStatus.Playing, 15_000);
+        } catch {
+            this.stop();
+            const detail = stderr.trim();
+            throw new Error(`Discord audio failed to start${detail ? `: ${detail}` : ''}`);
+        }
     }
 
     pause() {

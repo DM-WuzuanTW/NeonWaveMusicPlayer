@@ -60,8 +60,9 @@ function MainApp() {
   const [showLyrics, setShowLyrics] = useState(false)
   const [importModalData, setImportModalData] = useState<any | null>(null)
   const [discordSyncSignal, setDiscordSyncSignal] = useState(0)
-  const discordStreamActiveRef = useRef(false)
   const discordCaptureActiveRef = useRef(false)
+  const discordPlaybackModeRef = useRef<'none' | 'file' | 'stream'>('none')
+  const discordTrackPathRef = useRef<string | null>(null)
 
   // Listen for playback toggle commands from the mini player (PIP)
   useEffect(() => {
@@ -121,58 +122,74 @@ function MainApp() {
 
         if (!active) return
 
-        if (status.isConnected && status.currentChannelId) {
+        if (status.isConnected && status.currentChannelId && currentTrack) {
           if (isPlaying) {
-            if (!discordStreamActiveRef.current) {
-              console.log('[App] Starting Discord Stream...')
+            const canPlayDirectly = !!currentTrack.path && !currentTrack.path.startsWith('shared:')
 
-              await window.ipcRenderer.invoke('discord:startStreamMode')
-              discordStreamActiveRef.current = true
-
-              const captureStarted = startPcmCapture(buffer => {
-                window.ipcRenderer.send('discord:audio-chunk', buffer)
-              })
-              discordCaptureActiveRef.current = captureStarted
-
-              if (!captureStarted) {
-                console.warn('[App] Discord stream unavailable from AudioEngine')
-                discordStreamActiveRef.current = false
-                window.ipcRenderer.invoke('discord:stop').catch(console.error)
+            if (canPlayDirectly) {
+              // Local files are decoded in the main process. This avoids pushing
+              // dozens of PCM IPC messages per second, which could silently starve
+              // the Discord voice player under renderer load.
+              if (discordCaptureActiveRef.current) {
+                stopPcmCapture()
+                discordCaptureActiveRef.current = false
               }
 
-              if (captureStarted) {
-                setLocalMute(true)
-                window.ipcRenderer.invoke('discord:setVolume', 100).catch(console.error)
+              const isSameTrack = discordPlaybackModeRef.current === 'file'
+                && discordTrackPathRef.current === currentTrack.path
+              if (isSameTrack) {
+                await window.ipcRenderer.invoke('discord:resume')
+              } else {
+                const startTime = getMediaElement()?.currentTime || 0
+                await window.ipcRenderer.invoke('discord:play', currentTrack.path, startTime)
+                discordPlaybackModeRef.current = 'file'
+                discordTrackPathRef.current = currentTrack.path
               }
             } else {
+              // Remote/shared tracks have no local path for FFmpeg, so retain the
+              // renderer capture path as a fallback.
+              if (discordPlaybackModeRef.current !== 'stream') {
+                await window.ipcRenderer.invoke('discord:startStreamMode')
+                discordPlaybackModeRef.current = 'stream'
+                discordTrackPathRef.current = currentTrack.path
+              }
+
               if (!discordCaptureActiveRef.current) {
                 discordCaptureActiveRef.current = startPcmCapture(buffer => {
                   window.ipcRenderer.send('discord:audio-chunk', buffer)
                 })
               }
-              window.ipcRenderer.invoke('discord:resume').catch(console.error)
+              if (!discordCaptureActiveRef.current) {
+                throw new Error('Discord stream unavailable from AudioEngine')
+              }
+              await window.ipcRenderer.invoke('discord:resume')
             }
-          } else {
+
+            setLocalMute(true)
+            window.ipcRenderer.invoke('discord:setVolume', 100).catch(console.error)
+          } else if (discordPlaybackModeRef.current !== 'none') {
             if (discordCaptureActiveRef.current) {
               stopPcmCapture()
               discordCaptureActiveRef.current = false
-              window.ipcRenderer.invoke('discord:pause').catch(console.error)
             }
+            await window.ipcRenderer.invoke('discord:pause')
           }
         } else {
           stopPcmCapture()
           discordCaptureActiveRef.current = false
-          if (discordStreamActiveRef.current) {
-            discordStreamActiveRef.current = false
+          if (discordPlaybackModeRef.current !== 'none') {
             window.ipcRenderer.invoke('discord:stop').catch(console.error)
           }
+          discordPlaybackModeRef.current = 'none'
+          discordTrackPathRef.current = null
           setLocalMute(false)
         }
       } catch (error) {
         console.error('[App] Discord stream sync failed:', error)
         stopPcmCapture()
         discordCaptureActiveRef.current = false
-        discordStreamActiveRef.current = false
+        discordPlaybackModeRef.current = 'none'
+        discordTrackPathRef.current = null
         window.ipcRenderer.invoke('discord:stop').catch(console.error)
         setLocalMute(false)
       }
@@ -187,7 +204,7 @@ function MainApp() {
       active = false
       if (debounceTimer) clearTimeout(debounceTimer)
     }
-  }, [isPlaying, currentTrack, discordSyncSignal, setLocalMute, startPcmCapture, stopPcmCapture])
+  }, [isPlaying, currentTrack, discordSyncSignal, getMediaElement, setLocalMute, startPcmCapture, stopPcmCapture])
 
   const handleImportClick = async () => {
     const data = await readImportFile()

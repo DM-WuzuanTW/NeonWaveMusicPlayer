@@ -702,10 +702,10 @@ while ($true) {
     return await discordBot.disconnect()
   })
 
-  ipcMain.handle('discord:play', async (_, filePath) => {
+  ipcMain.handle('discord:play', async (_, filePath, startTime = 0) => {
     
     
-    return await discordBot.playFile(filePath, ffmpegPath)
+    return await discordBot.playFile(filePath, ffmpegPath, startTime)
   })
 
   ipcMain.handle('discord:stop', () => {
