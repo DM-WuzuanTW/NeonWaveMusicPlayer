@@ -525,16 +525,11 @@ export class DiscordBotManager {
         return false;
     }
 
-    async playReceiverStream() {
+    async playReceiverStream(ffmpegPath?: string) {
         if (!this.currentConnection) throw new Error("Not connected");
         await entersState(this.currentConnection, VoiceConnectionStatus.Ready, 15000);
 
-        this.killCurrentProcess(); 
-        if (this.streamInput && !this.streamInput.destroyed) {
-            try { this.streamInput.destroy(); } catch {
-                // Stream is already closing.
-            }
-        }
+        this.stop();
 
         const streamInput = new PassThrough();
         this.streamInput = streamInput;
@@ -542,7 +537,48 @@ export class DiscordBotManager {
             console.error('[DiscordBot] Voice input stream error:', error);
         });
 
-        const resource = createAudioResource(streamInput, {
+        if (!ffmpegPath) throw new Error('FFmpeg is required for Discord streaming');
+
+        const { spawn } = await import('node:child_process');
+        const ffmpegProcess = spawn(ffmpegPath, [
+            '-nostdin',
+            '-hide_banner',
+            '-analyzeduration', '0',
+            '-probesize', '32k',
+            '-loglevel', 'error',
+            '-i', 'pipe:0',
+            '-vn',
+            '-acodec', 'pcm_s16le',
+            '-f', 's16le',
+            '-ar', '48000',
+            '-ac', '2',
+            'pipe:1'
+        ]);
+        this.currentProcess = ffmpegProcess;
+
+        ffmpegProcess.stdin.on('error', error => {
+            if ((error as NodeJS.ErrnoException).code !== 'EPIPE') {
+                console.error('[DiscordBot] FFmpeg input error:', error);
+            }
+        });
+        ffmpegProcess.stderr?.on('data', chunk => {
+            console.error('[DiscordBot] FFmpeg stream error:', chunk.toString().trim());
+        });
+        ffmpegProcess.on('error', error => {
+            console.error('[DiscordBot] FFmpeg spawn error:', error);
+            if (this.streamInput === streamInput) streamInput.destroy(error);
+        });
+        ffmpegProcess.on('close', code => {
+            if (code && code !== 0) {
+                console.error(`[DiscordBot] FFmpeg stream exited with code ${code}`);
+            }
+            if (this.streamInput === streamInput) streamInput.destroy();
+            if (this.currentProcess === ffmpegProcess) this.currentProcess = null;
+        });
+
+        streamInput.pipe(ffmpegProcess.stdin);
+
+        const resource = createAudioResource(ffmpegProcess.stdout, {
             inputType: StreamType.Raw,
             inlineVolume: true
         });

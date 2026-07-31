@@ -730,7 +730,7 @@ while ($true) {
 
   
   ipcMain.handle('discord:startStreamMode', async () => {
-    return await discordBot.playReceiverStream()
+    return await discordBot.playReceiverStream(ffmpegPath)
   })
 
   
