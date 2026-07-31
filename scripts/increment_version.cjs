@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const packageJsonPath = path.resolve(__dirname, '../package.json');
+const packageLockPath = path.resolve(__dirname, '../package-lock.json');
 
 let fileContent;
 try {
@@ -56,6 +57,15 @@ try {
 
     packageJson.version = newVersion;
     fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n');
+
+    if (fs.existsSync(packageLockPath)) {
+        const packageLock = JSON.parse(fs.readFileSync(packageLockPath, 'utf8'));
+        packageLock.version = newVersion;
+        if (packageLock.packages?.['']) {
+            packageLock.packages[''].version = newVersion;
+        }
+        fs.writeFileSync(packageLockPath, JSON.stringify(packageLock, null, 2) + '\n');
+    }
 
     console.log(newVersion);
 
