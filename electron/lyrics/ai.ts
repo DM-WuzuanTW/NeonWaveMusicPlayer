@@ -9,6 +9,8 @@ export interface AiConfig {
     mode?: string
     reasoning?: string
     lang?: string
+    calibrationEnabled?: boolean
+    calibrationMode?: string
 }
 
 export function isAiEnabled(cfg?: AiConfig | null): cfg is AiConfig {

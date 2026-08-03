@@ -8,6 +8,7 @@ interface Window {
         getAudioMetadata(path: string, options?: { loadArtwork: boolean }): Promise<any>
         getAudioMetadataBatch(paths: string[]): Promise<any[]>
         getAudioArtwork(path: string): Promise<string | null>
+        readFileBuffer(path: string, maxBytes?: number): Promise<ArrayBuffer | Uint8Array | null>
 
         checkUpdate(): Promise<{ ok: boolean; error?: string }>
         installUpdate(): Promise<{ ok: boolean; error?: string }>
@@ -19,6 +20,10 @@ interface Window {
         downloadYouTubeToDir(url: string, title: string, artist: string, dir: string, limitRate?: string, fileTimestamp?: number, format?: string): Promise<string | null>
         getArtistImage(name: string): Promise<string | null>
         getLyrics(title: string, artist: string, filePath?: string, duration?: number, aiConfig?: any): Promise<string | null>
+        getGpuLyricsStatus(): Promise<{ engineReady: boolean; models: Record<string, boolean>; engineVersion: string; gpuName: string }>
+        getLyricsComputeDevices(): Promise<{ gpus: Array<{ index: number; name: string; memoryMb: number }>; cpu: { name: string; logicalThreads: number; totalMemoryMb: number } }>
+        calibrateLyricsGpu(audioPath: string, rawLyrics: string | undefined, mode: string, force?: boolean, computeConfig?: import('./lyricsCalibration').CalibrationComputeConfig): Promise<{ ok: boolean; lyrics?: string; confidence?: number; savedPath?: string; historyPath?: string; runs?: number; cached?: boolean; error?: string }>
+        onGpuLyricsProgress(callback: (data: { stage: string; percent: number; message: string }) => void): () => void
         invoke(channel: 'party:status'): Promise<{
             active: boolean
             roomId: string | null

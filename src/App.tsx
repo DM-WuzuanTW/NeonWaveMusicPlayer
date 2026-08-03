@@ -312,7 +312,7 @@ function MainApp() {
   }, [])
 
   return (
-    <div style={{ display: 'flex', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+    <div className="app-shell">
       <Sidebar
         playlists={playlists}
         onOpenFolder={addFolder}
@@ -325,13 +325,7 @@ function MainApp() {
         onChangeView={setView}
       />
 
-      <main style={{
-        flex: 1,
-        display: 'flex',
-        flexDirection: 'column',
-        height: '100%',
-        position: 'relative'
-      }}>
+      <main className="app-main">
         {/* Draggable Title Bar Area */}
         <div style={{
           height: '32px',
@@ -343,7 +337,13 @@ function MainApp() {
           WebkitAppRegion: 'drag'
         } as any} />
 
-        <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '100px' }}>
+        <div className="theme-chrome" aria-hidden="true">
+          <div className="theme-window-actions"><span /><span /><span /></div>
+          <div className="theme-context" />
+          <div className="theme-status" />
+        </div>
+
+        <div className="app-scroll">
           {currentTrack?.mediaType === 'video' && (
             <VideoSurface
               track={currentTrack}
@@ -367,7 +367,7 @@ function MainApp() {
           )}
 
           {view === 'settings' && (
-            <SettingsView />
+            <SettingsView currentTrack={currentTrack ? { path: currentTrack.path, title: currentTrack.title } : null} />
           )}
 
           {view === 'discord' && (

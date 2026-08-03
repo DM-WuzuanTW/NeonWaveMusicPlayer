@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   getAudioMetadataBatch: (paths: string[]) => ipcRenderer.invoke('files:getMetadataBatch', paths),
   getAudioArtwork: (path: string) => ipcRenderer.invoke('files:getArtwork', path),
   readFileBufferPartial: (path: string, maxBytes: number) => ipcRenderer.invoke('files:readBufferPartial', path, maxBytes),
+  readFileBuffer: (path: string, maxBytes?: number) => ipcRenderer.invoke('files:readBuffer', path, maxBytes),
 
   
   checkUpdate: () => ipcRenderer.invoke('update:check'),
@@ -41,6 +42,14 @@ contextBridge.exposeInMainWorld('ipcRenderer', {
   downloadYouTube: (url: string, title: string, artist?: string, format?: string) => ipcRenderer.invoke('download:youtube', url, title, artist, format),
   downloadYouTubeToDir: (url: string, title: string, artist: string, dir: string, limitRate?: string, fileTimestamp?: number, format?: string) => ipcRenderer.invoke('download:youtubeToDir', url, title, artist, dir, limitRate, fileTimestamp, format),
   getLyrics: (title: string, artist: string, filePath?: string, duration?: number, aiConfig?: any) => ipcRenderer.invoke('search:lyrics', title, artist, filePath, duration, aiConfig),
+  getGpuLyricsStatus: () => ipcRenderer.invoke('lyrics:gpuStatus'),
+  getLyricsComputeDevices: () => ipcRenderer.invoke('lyrics:computeDevices'),
+  calibrateLyricsGpu: (audioPath: string, rawLyrics: string | undefined, mode: string, force?: boolean, computeConfig?: any) => ipcRenderer.invoke('lyrics:gpuCalibrate', audioPath, rawLyrics, mode, force, computeConfig),
+  onGpuLyricsProgress: (callback: (data: any) => void) => {
+    const listener = (_: any, data: any) => callback(data)
+    ipcRenderer.on('lyrics:gpuProgress', listener)
+    return () => ipcRenderer.removeListener('lyrics:gpuProgress', listener)
+  },
   onDownloadProgress: (callback: (data: { url: string, speed: string, percent?: number }) => void) => {
     ipcRenderer.on('download:progress', (_, data) => callback(data))
   },

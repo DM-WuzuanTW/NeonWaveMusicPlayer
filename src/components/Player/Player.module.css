@@ -4,7 +4,7 @@
     left: 0;
     right: 0;
     height: 96px;
-    background: rgba(10, 15, 30, 0.85);
+    background: var(--player-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-top: 1px solid var(--glass-border);
@@ -207,3 +207,52 @@
         box-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
     }
 }
+
+:global(:root[data-theme='spotify']) .bar {
+    left: 264px;
+    right: 8px;
+    bottom: 8px;
+    height: 88px;
+    padding: 0 24px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    box-shadow: 0 12px 34px rgba(0,0,0,0.5);
+}
+:global(:root[data-theme='spotify']) .playBtn { background: var(--accent-primary); }
+
+:global(:root[data-theme='discord']) .bar {
+    left: 300px;
+    height: 80px;
+    padding: 0 20px;
+    background: #232428;
+    box-shadow: 0 -1px 0 rgba(0,0,0,0.25);
+}
+:global(:root[data-theme='discord']) .art { width: 48px; height: 48px; border-radius: 50%; }
+:global(:root[data-theme='discord']) .playBtn { width: 42px; height: 42px; background: var(--accent-primary); color: #fff; }
+:global(:root[data-theme='discord']) .buttons { gap: 16px; }
+
+:global(:root[data-theme='youtube-music']) .bar {
+    left: 228px;
+    height: 80px;
+    padding: 0 28px;
+    background: rgba(9,9,9,0.98);
+    border-top-color: rgba(255,255,255,0.12);
+    box-shadow: none;
+}
+:global(:root[data-theme='youtube-music']) .art { width: 48px; height: 48px; border-radius: 2px; }
+:global(:root[data-theme='youtube-music']) .playBtn { width: 42px; height: 42px; background: transparent; color: #fff; box-shadow: none; }
+
+:global(:root[data-theme='apple-music']) .bar {
+    left: 244px;
+    right: 12px;
+    bottom: 12px;
+    height: 92px;
+    padding: 0 26px;
+    border: 1px solid rgba(255,255,255,0.13);
+    border-radius: 20px;
+    background: rgba(34,32,38,0.84);
+    box-shadow: 0 18px 50px rgba(0,0,0,0.38);
+}
+:global(:root[data-theme='apple-music']) .art { border-radius: 12px; }
+:global(:root[data-theme='apple-music']) .playBtn { background: var(--accent-primary); color: #fff; }
+:global(:root[data-theme='apple-music']) .progressContainer { max-width: 520px; }

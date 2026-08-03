@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react'
 import { List, useListRef } from 'react-window'
-import { Search } from 'lucide-react'
+import { Music, Search } from 'lucide-react'
 import { TrackItem } from './TrackItem'
 import styles from './Playlist.module.css'
 import { Track } from '../../hooks/useAudioPlayer'
@@ -23,6 +23,7 @@ const TrackListView: React.FC<TrackListProps> = ({
     const [matches, setMatches] = useState<number[]>([])
     const [currentMatchIdx, setCurrentMatchIdx] = useState(0)
     const containerRef = useRef<HTMLDivElement>(null)
+    const headerAreaRef = useRef<HTMLDivElement>(null)
     const listRef = useListRef() as any
     const [listHeight, setListHeight] = useState(600)
     const favoritePaths = useMemo(() => new Set(favorites.map(f => f.path)), [favorites])
@@ -31,9 +32,9 @@ const TrackListView: React.FC<TrackListProps> = ({
     useEffect(() => {
         const measure = () => {
             if (containerRef.current) {
-                // Subtract header height (~90px) from container
                 const rect = containerRef.current.getBoundingClientRect()
-                setListHeight(Math.max(200, rect.height - 90))
+                const headerHeight = headerAreaRef.current?.getBoundingClientRect().height || 90
+                setListHeight(Math.max(200, rect.height - headerHeight))
             }
         }
         measure()
@@ -107,28 +108,50 @@ const TrackListView: React.FC<TrackListProps> = ({
                 onClick={() => onPlay(track)}
                 isFavorite={isFav}
                 onToggleFavorite={() => onToggleFavorite && onToggleFavorite(track)}
+                trackIndex={index + 1}
             />
         )
     }
 
     return (
         <div className={styles.container} ref={containerRef}>
-            <header className={styles.header}>
-                <h2 className={styles.heading}>{title}</h2>
-                <div className={styles.searchWrapper}>
-                    <Search size={16} color="var(--text-muted)" style={{ marginRight: '8px' }} />
-                    <input 
-                        type="text" 
-                        placeholder="在列表中跳轉尋找...(可按Enter換首)" 
-                        value={searchQuery}
-                        onChange={handleSearch}
-                        onKeyDown={handleKeyDown}
-                        className={styles.searchInput}
-                    />
-                    {matches.length > 0 && <span className={styles.searchCount}>{currentMatchIdx + 1} / {matches.length}</span>}
-                </div>
-                <span className={styles.artist}>{tracks.length} 個項目</span>
-            </header>
+            <div ref={headerAreaRef}>
+                <section className={styles.themeHero} aria-hidden="true">
+                    <div className={styles.themeHeroArtwork}>
+                        {currentTrack?.artwork ? (
+                            <img
+                                src={currentTrack.artwork}
+                                alt=""
+                                draggable={false}
+                                className={styles.themeHeroImage}
+                            />
+                        ) : (
+                            <Music size={34} />
+                        )}
+                    </div>
+                    <div className={styles.themeHeroCopy}>
+                        <span className={styles.themeHeroEyebrow} />
+                        <strong>{title}</strong>
+                        <small>NeonWave · {tracks.length} 首歌曲</small>
+                    </div>
+                </section>
+                <header className={styles.header}>
+                    <h2 className={styles.heading}>{title}</h2>
+                    <div className={styles.searchWrapper}>
+                        <Search size={16} color="var(--text-muted)" style={{ marginRight: '8px' }} />
+                        <input
+                            type="text"
+                            placeholder="在列表中跳轉尋找...(可按Enter換首)"
+                            value={searchQuery}
+                            onChange={handleSearch}
+                            onKeyDown={handleKeyDown}
+                            className={styles.searchInput}
+                        />
+                        {matches.length > 0 && <span className={styles.searchCount}>{currentMatchIdx + 1} / {matches.length}</span>}
+                    </div>
+                    <span className={styles.artist}>{tracks.length} 個項目</span>
+                </header>
+            </div>
             <List<{}>
                 listRef={listRef}
                 style={{ height: listHeight, width: '100%' }}

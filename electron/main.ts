@@ -5,6 +5,7 @@ import { Readable } from 'node:stream'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import fsSync from 'node:fs'
+import os from 'node:os'
 import { autoUpdater } from 'electron-updater'
 import { spawn } from 'node:child_process'
 import * as mm from 'music-metadata'
@@ -14,6 +15,7 @@ import { searchArtistImage } from './utils/artistSearch'
 import { searchTrackArtwork } from './utils/artworkSearch'
 import { PartyRoomService, type PartyCommand } from './partyRoom'
 import { searchLyrics } from './lyrics'
+import { getGpuCalibrationStatus, runGpuLyricsCalibration, type GpuCalibrationMode } from './lyrics/gpuCalibration'
 
 // Register custom standard protocol for local media playback to bypass CORS restrictions for Web Audio API
 protocol.registerSchemesAsPrivileged([
@@ -1085,6 +1087,23 @@ while ($true) {
     }
   })
 
+  ipcMain.handle('files:readBuffer', async (_, filePath, maxBytes = 128 * 1024 * 1024) => {
+    try {
+      const stat = await fs.stat(filePath)
+      if (stat.size > maxBytes) {
+        throw new Error(`Audio file is too large for in-memory calibration (${stat.size} bytes)`)
+      }
+      const buffer = await fs.readFile(filePath)
+      // Electron's structured clone does not guarantee that a Node Buffer
+      // arrives in the renderer as an ArrayBuffer. Return an exact standalone
+      // ArrayBuffer so decodeAudioData always receives the browser-native type.
+      return buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength)
+    } catch (error) {
+      console.error('Error reading audio file for calibration:', error)
+      return null
+    }
+  })
+
   const fileArtworkCache = new Map<string, string | null>()
 
   ipcMain.handle('files:getArtwork', async (_, filePath) => {
@@ -1510,5 +1529,55 @@ while ($true) {
 
   ipcMain.handle('search:lyrics', async (_, title, artist, filePath, duration, aiConfig) => {
     return searchLyrics({ title, artist, filePath, duration, aiConfig })
+  })
+
+  const gpuLyricsRoot = path.join(app.getPath('userData'), 'gpu-lyrics')
+  ipcMain.handle('lyrics:gpuStatus', async () => {
+    const status = await getGpuCalibrationStatus(gpuLyricsRoot)
+    const gpuInfo = await app.getGPUInfo('basic').catch(() => null)
+    const devices = Array.isArray((gpuInfo as any)?.gpuDevice) ? (gpuInfo as any).gpuDevice : []
+    return {
+      ...status,
+      gpuName: devices.map((device: any) => device?.deviceString).filter(Boolean).join(' / ') || 'NVIDIA GPU'
+    }
+  })
+
+  ipcMain.handle('lyrics:computeDevices', async () => {
+    const gpus = await new Promise<Array<{ index: number; name: string; memoryMb: number }>>(resolve => {
+      const child = spawn('nvidia-smi', ['--query-gpu=index,name,memory.total', '--format=csv,noheader,nounits'], { windowsHide: true })
+      let output = ''
+      child.stdout.on('data', chunk => { output += String(chunk) })
+      child.on('error', () => resolve([]))
+      child.on('close', code => {
+        if (code !== 0) return resolve([])
+        resolve(output.trim().split(/\r?\n/).filter(Boolean).map(line => {
+          const [index, name, memory] = line.split(',').map(value => value.trim())
+          return { index: Number(index), name, memoryMb: Number(memory) }
+        }).filter(gpu => Number.isInteger(gpu.index)))
+      })
+    })
+    return {
+      gpus,
+      cpu: {
+        name: os.cpus()[0]?.model || 'CPU',
+        logicalThreads: os.cpus().length,
+        totalMemoryMb: Math.round(os.totalmem() / 1024 / 1024)
+      }
+    }
+  })
+
+  ipcMain.handle('lyrics:gpuCalibrate', async (event, audioPath: string, rawLyrics: string | undefined, mode: GpuCalibrationMode, force = false, computeConfig?: any) => {
+    return runGpuLyricsCalibration({
+      audioPath,
+      rawLyrics,
+      mode,
+      force,
+      runtimeRoot: gpuLyricsRoot,
+      ffmpegPath,
+      computeConfig,
+      onProgress: progress => {
+        if (!event.sender.isDestroyed()) event.sender.send('lyrics:gpuProgress', progress)
+      }
+    })
   })
 })
