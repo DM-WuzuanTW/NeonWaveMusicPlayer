@@ -484,7 +484,9 @@ export function useAudioPlayer(contextMode?: string) {
         let lastSyncedArtwork = ''
 
         const sync = () => {
-            const gameModeSetting = localStorage.getItem('neonwave_mini_game_mode') || 'auto';
+            // Click-through is opt-in. Defaulting to automatic can make a new
+            // PIP appear broken when an app is incorrectly detected as a game.
+            const gameModeSetting = localStorage.getItem('neonwave_mini_game_mode') || 'off';
             const isGameModeActive = (gameModeSetting === 'always') || (gameModeSetting === 'auto' && contextMode === 'game');
 
             const currentPath = currentTrack ? currentTrack.path : '';

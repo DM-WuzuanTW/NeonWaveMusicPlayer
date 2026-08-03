@@ -826,6 +826,14 @@ while ($true) {
         }
     })
 
+    ipcMain.handle('window:previousTrack', () => {
+        if (win && !win.isDestroyed()) win.webContents.send('player:previousTrack')
+    })
+
+    ipcMain.handle('window:nextTrack', () => {
+        if (win && !win.isDestroyed()) win.webContents.send('player:nextTrack')
+    })
+
     ipcMain.handle('window:restoreMain', () => {
         if (win && !win.isDestroyed()) {
             if (win.isMinimized()) win.restore()
@@ -908,16 +916,11 @@ while ($true) {
         }
     })
 
-    ipcMain.handle('window:toggleMiniPlayer', () => {
-        if (miniWin && !miniWin.isDestroyed()) {
-            miniWin.close()
-            miniWin = null
-            return false
-        }
-
+    const createMiniPlayer = () => {
+        if (miniWin && !miniWin.isDestroyed()) return miniWin
         const { width: screenWidth } = screen.getPrimaryDisplay().workAreaSize
-        const miniWidth = 180
-        const miniHeight = 180
+        const miniWidth = 356
+        const miniHeight = 132
         const margin = 20
 
         miniWin = new BrowserWindow({
@@ -935,8 +938,14 @@ while ($true) {
             backgroundColor: '#00000000',
             webPreferences: {
                 preload: path.join(__dirname, 'preload.mjs'),
+                backgroundThrottling: false,
             }
         })
+
+        // A newly-created window must always receive its own hit-test state.
+        // Reusing the previous window's cached value can leave the replacement
+        // permanently click-through until the game mode changes again.
+        lastIgnoreMouseEvents = null
 
         miniWin.webContents.on('console-message', (_, level, message, line, sourceId) => {
             const levels = ['DEBUG', 'INFO', 'WARN', 'ERROR']
@@ -952,8 +961,33 @@ while ($true) {
 
         miniWin.on('closed', () => {
             miniWin = null
+            lastIgnoreMouseEvents = null
         })
 
+        return miniWin
+    }
+
+    ipcMain.handle('window:setMiniPlayer', (_event, enabled: boolean) => {
+        if (!enabled) {
+            if (miniWin && !miniWin.isDestroyed()) miniWin.close()
+            miniWin = null
+            lastIgnoreMouseEvents = null
+            return false
+        }
+        createMiniPlayer()
+        return true
+    })
+
+    // Backward-compatible entrypoint for older renderer builds.
+    ipcMain.handle('window:toggleMiniPlayer', () => {
+        const enabled = !(miniWin && !miniWin.isDestroyed())
+        if (!enabled) {
+            miniWin?.close()
+            miniWin = null
+            lastIgnoreMouseEvents = null
+            return false
+        }
+        createMiniPlayer()
         return true
     })
 

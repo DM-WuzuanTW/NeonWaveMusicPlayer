@@ -302,6 +302,8 @@ export function SettingsView({ currentTrack }: SettingsViewProps) {
     const [gpuResult, setGpuResult] = useState<string>('')
     const [computeDevices, setComputeDevices] = useState<{ gpus: Array<{ index: number; name: string; memoryMb: number }>; cpu: { name: string; logicalThreads: number; totalMemoryMb: number } } | null>(null)
     const [computeConfig, setComputeConfig] = useState<CalibrationComputeConfig>(getCalibrationComputeConfig)
+    const [miniPlayerEnabled, setMiniPlayerEnabled] = useState(() => localStorage.getItem('neonwave_mini_player') === 'true')
+    const [miniGameMode, setMiniGameMode] = useState(() => localStorage.getItem('neonwave_mini_game_mode') || 'off')
 
     useEffect(() => {
         setTrackCalibration(getTrackCalibration(currentTrack?.path))
@@ -649,11 +651,14 @@ export function SettingsView({ currentTrack }: SettingsViewProps) {
                             <label className="switch">
                                 <input
                                     type="checkbox"
-                                    defaultChecked={localStorage.getItem('neonwave_mini_player') === 'true'}
+                                    checked={miniPlayerEnabled}
                                     onChange={async (e) => {
                                         const enabled = e.target.checked;
+                                        setMiniPlayerEnabled(enabled);
                                         localStorage.setItem('neonwave_mini_player', enabled.toString());
-                                        await window.ipcRenderer.invoke('window:toggleMiniPlayer');
+                                        const actualState = await window.ipcRenderer.invoke<boolean>('window:setMiniPlayer', enabled);
+                                        setMiniPlayerEnabled(actualState);
+                                        localStorage.setItem('neonwave_mini_player', actualState.toString());
                                         window.dispatchEvent(new Event('neonwave:settings-changed'));
                                     }}
                                 />
@@ -675,8 +680,9 @@ export function SettingsView({ currentTrack }: SettingsViewProps) {
                             </div>
                             <select
                                 className="settings-select"
-                                defaultValue={localStorage.getItem('neonwave_mini_game_mode') || 'auto'}
+                                value={miniGameMode}
                                 onChange={(e) => {
+                                    setMiniGameMode(e.target.value);
                                     localStorage.setItem('neonwave_mini_game_mode', e.target.value);
                                     window.dispatchEvent(new Event('neonwave:settings-changed'));
                                 }}
@@ -716,7 +722,9 @@ export function SettingsView({ currentTrack }: SettingsViewProps) {
                             { id: 'danmaku', icon: '→', title: '橫向彈幕', description: '歌詞從畫面右側滑過，保留目前的動態效果' },
                             { id: 'focus', icon: '◎', title: '中央聚焦', description: '目前歌詞置中顯示，下一句淡化預覽' },
                             { id: 'subtitle', icon: '▱', title: '底部字幕', description: '像影片字幕一樣固定顯示於畫面底部' },
-                            { id: 'panel', icon: '≡', title: '沉浸歌詞', description: '以垂直歌詞面板顯示前後段落與目前進度' }
+                            { id: 'panel', icon: '≡', title: '沉浸歌詞', description: '封面與完整歌詞清單並排顯示，自動跟隨目前段落' },
+                            { id: 'kinetic', icon: '字', title: '動態字卡', description: '逐字分層進場、景深縮放與錯位轉場，適合情緒強烈的歌曲' },
+                            { id: 'rhythm-cut', icon: '◆', title: '節奏剪輯', description: '依每句時間切分脈衝、快速推進與閃切效果，呈現音樂剪輯感' }
                         ].map(mode => (
                             <button
                                 key={mode.id}
