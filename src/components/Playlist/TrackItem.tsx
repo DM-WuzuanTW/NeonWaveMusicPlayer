@@ -111,9 +111,10 @@ interface TrackItemProps {
     isHighlighted?: boolean
     onClick: () => void
     onToggleFavorite?: () => void
+    trackIndex?: number
 }
 
-export const TrackItem: React.FC<TrackItemProps> = ({ id, style, track, isActive, isFavorite, isHighlighted, onClick, onToggleFavorite }) => {
+export const TrackItem: React.FC<TrackItemProps> = ({ id, style, track, isActive, isFavorite, isHighlighted, onClick, onToggleFavorite, trackIndex }) => {
     const [artwork, setArtwork] = React.useState<string | undefined>(() => {
         return track.artwork || getCachedArtwork(track.path) || artworkResultCache.get(track.path)?.artwork
     })
@@ -191,6 +192,7 @@ export const TrackItem: React.FC<TrackItemProps> = ({ id, style, track, isActive
             onClick={onClick}
             style={style}
         >
+            <span className={styles.trackIndex}>{trackIndex}</span>
             <div className={styles.icon}>
                 {artwork ? (
                     <img

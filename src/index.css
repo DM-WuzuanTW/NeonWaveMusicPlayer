@@ -20,10 +20,75 @@
   --accent-primary: #00fff2;
   --accent-secondary: #ff00ff;
   --bg-dark: #020617;
+  --bg-main: transparent;
+  --body-bg: linear-gradient(135deg, #020617 0%, #0f172a 35%, #172554 65%, #1e1b4b 100%);
+  --sidebar-bg: rgba(10, 10, 15, 0.4);
+  --player-bg: rgba(10, 15, 30, 0.85);
   --glass-bg: rgba(15, 23, 42, 0.7);
   --glass-border: rgba(255, 255, 255, 0.08);
   --text-main: #ffffff;
   --text-muted: #94a3b8;
+}
+
+:root[data-theme='spotify'] {
+  --accent-primary: #1ed760;
+  --accent-secondary: #1fdf64;
+  --accent: var(--accent-primary);
+  --accent-glow: rgba(30, 215, 96, 0.3);
+  --bg-dark: #090909;
+  --bg-main: rgba(18, 18, 18, 0.88);
+  --body-bg: linear-gradient(145deg, #191414 0%, #121212 48%, #071b0f 100%);
+  --sidebar-bg: rgba(0, 0, 0, 0.72);
+  --player-bg: rgba(18, 18, 18, 0.96);
+  --glass-bg: rgba(28, 28, 28, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --text-muted: #b3b3b3;
+}
+
+:root[data-theme='discord'] {
+  --accent-primary: #5865f2;
+  --accent-secondary: #7983f5;
+  --accent: var(--accent-primary);
+  --accent-glow: rgba(88, 101, 242, 0.38);
+  --bg-dark: #1e1f22;
+  --bg-main: rgba(43, 45, 49, 0.9);
+  --body-bg: linear-gradient(145deg, #1e1f22 0%, #2b2d31 48%, #252849 100%);
+  --sidebar-bg: rgba(30, 31, 34, 0.9);
+  --player-bg: rgba(35, 36, 40, 0.96);
+  --glass-bg: rgba(49, 51, 56, 0.8);
+  --glass-border: rgba(255, 255, 255, 0.09);
+  --text-main: #f2f3f5;
+  --text-muted: #b5bac1;
+}
+
+:root[data-theme='youtube-music'] {
+  --accent-primary: #ff0033;
+  --accent-secondary: #ff4e68;
+  --accent: var(--accent-primary);
+  --accent-glow: rgba(255, 0, 51, 0.36);
+  --bg-dark: #050505;
+  --bg-main: rgba(12, 12, 12, 0.9);
+  --body-bg: linear-gradient(145deg, #050505 0%, #111111 55%, #26000a 100%);
+  --sidebar-bg: rgba(0, 0, 0, 0.78);
+  --player-bg: rgba(13, 13, 13, 0.97);
+  --glass-bg: rgba(24, 24, 24, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.1);
+  --text-muted: #aaa;
+}
+
+:root[data-theme='apple-music'] {
+  --accent-primary: #fa2d55;
+  --accent-secondary: #a855f7;
+  --accent: var(--accent-primary);
+  --accent-glow: rgba(250, 45, 85, 0.34);
+  --bg-dark: #101012;
+  --bg-main: rgba(24, 24, 27, 0.86);
+  --body-bg: linear-gradient(145deg, #111113 0%, #21151e 48%, #25132e 100%);
+  --sidebar-bg: rgba(17, 17, 19, 0.72);
+  --player-bg: rgba(25, 24, 28, 0.95);
+  --glass-bg: rgba(39, 37, 43, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.11);
+  --text-muted: #b8b5bd;
 }
 
 body {
@@ -31,7 +96,7 @@ body {
   padding: 0;
    
   /* Static gradient — avoids constant GPU repainting that triggers TDR crashes (nvlddmkm 153) */
-  background: linear-gradient(135deg, #020617 0%, #0f172a 35%, #172554 65%, #1e1b4b 100%);
+  background: var(--body-bg);
   background-size: 100% 100%;
 
   color: var(--text-main);
@@ -108,3 +173,166 @@ button {
   font-family: inherit;
   color: inherit;
 }
+
+/* App layout: these defaults exactly match the original NeonWave structure. */
+.app-shell {
+  display: flex;
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+  position: relative;
+}
+
+.app-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding-bottom: 100px;
+}
+
+.theme-chrome { display: none; }
+
+.settings-view {
+  max-width: 800px;
+  padding: 40px;
+}
+
+.settings-panel {
+  padding: 32px;
+  border-radius: 24px;
+}
+
+/* Spotify: separated library/navigation cards with a docked player. */
+:root[data-theme='spotify'] .app-shell {
+  gap: 8px;
+  padding: 8px;
+  background: #000;
+}
+
+:root[data-theme='spotify'] .app-main {
+  height: calc(100vh - 16px);
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(180deg, rgba(30, 215, 96, 0.12), #121212 38%);
+}
+
+:root[data-theme='spotify'] .app-scroll { padding-bottom: 104px; }
+:root[data-theme='spotify'] .theme-chrome {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 58px;
+  flex: 0 0 58px;
+  padding: 14px 22px;
+  border-bottom: 1px solid rgba(255,255,255,0.055);
+  background: rgba(18,18,18,0.7);
+}
+:root[data-theme='spotify'] .theme-window-actions { display: flex; gap: 8px; }
+:root[data-theme='spotify'] .theme-window-actions span {
+  width: 28px; height: 28px; border-radius: 50%; background: #090909;
+}
+:root[data-theme='spotify'] .theme-window-actions span:nth-child(3) { display: none; }
+:root[data-theme='spotify'] .theme-context::before { content: '你的音樂庫'; font-size: 13px; font-weight: 700; }
+:root[data-theme='spotify'] .theme-status { margin-left: auto; }
+:root[data-theme='spotify'] .theme-status::before {
+  content: 'NEONWAVE MIX';
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.08);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+:root[data-theme='spotify'] .settings-view { max-width: 1040px; padding: 32px; }
+:root[data-theme='spotify'] .settings-panel { border-radius: 10px; }
+
+/* Discord: dense, squared-off workspace with a persistent utility rail. */
+:root[data-theme='discord'] .app-main {
+  background: #313338;
+  border-left: 1px solid rgba(255,255,255,0.04);
+}
+
+:root[data-theme='discord'] .app-scroll { padding-bottom: 84px; }
+:root[data-theme='discord'] .theme-chrome {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  flex: 0 0 52px;
+  padding: 0 18px;
+  border-bottom: 1px solid rgba(0,0,0,0.3);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.025);
+}
+:root[data-theme='discord'] .theme-context::before { content: '#　音樂大廳'; font-weight: 700; font-size: 15px; }
+:root[data-theme='discord'] .theme-context::after { content: '分享你正在聽的音樂'; margin-left: 16px; color: var(--text-muted); font-size: 12px; }
+:root[data-theme='discord'] .theme-status { margin-left: auto; }
+:root[data-theme='discord'] .theme-status::before { content: '●  已連線'; color: #23a55a; font-size: 12px; }
+:root[data-theme='discord'] .settings-view { max-width: 920px; padding: 24px; }
+:root[data-theme='discord'] .settings-panel { padding: 24px; border-radius: 6px; }
+
+/* YouTube Music: flat content canvas and wide browsing layout. */
+:root[data-theme='youtube-music'] .app-main {
+  background: linear-gradient(180deg, rgba(255,0,51,0.07), #090909 32%);
+}
+
+:root[data-theme='youtube-music'] .app-scroll { padding-bottom: 84px; }
+:root[data-theme='youtube-music'] .theme-chrome {
+  display: flex;
+  align-items: flex-end;
+  gap: 28px;
+  height: 64px;
+  flex: 0 0 64px;
+  padding: 0 32px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(9,9,9,0.9);
+}
+:root[data-theme='youtube-music'] .theme-context::before { content: '首頁'; color: var(--text-muted); font-weight: 650; }
+:root[data-theme='youtube-music'] .theme-context::after { content: '探索　　音樂庫'; margin-left: 30px; color: #fff; font-weight: 650; }
+:root[data-theme='youtube-music'] .theme-context { position: relative; }
+:root[data-theme='youtube-music'] .theme-context span { display: none; }
+:root[data-theme='youtube-music'] .theme-status { margin-left: auto; }
+:root[data-theme='youtube-music'] .theme-status::before { content: 'NEONWAVE MUSIC'; font-size: 11px; letter-spacing: .12em; }
+:root[data-theme='youtube-music'] .settings-view { max-width: 1100px; padding: 32px; }
+:root[data-theme='youtube-music'] .settings-panel { border-radius: 2px; }
+
+/* Apple Music: roomy inset panels and a floating playback dock. */
+:root[data-theme='apple-music'] .app-shell {
+  gap: 12px;
+  padding: 12px;
+}
+
+:root[data-theme='apple-music'] .app-main {
+  height: calc(100vh - 24px);
+  overflow: hidden;
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  background: rgba(24, 24, 27, 0.72);
+  box-shadow: 0 20px 60px rgba(0,0,0,0.28);
+}
+
+:root[data-theme='apple-music'] .app-scroll { padding-bottom: 112px; }
+:root[data-theme='apple-music'] .theme-chrome {
+  display: flex;
+  align-items: flex-end;
+  height: 66px;
+  flex: 0 0 66px;
+  padding: 0 30px 13px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  background: rgba(24,24,27,0.58);
+}
+:root[data-theme='apple-music'] .theme-context::before { content: '現在就聽'; font-size: 17px; font-weight: 750; letter-spacing: -.02em; }
+:root[data-theme='apple-music'] .theme-status { margin-left: auto; }
+:root[data-theme='apple-music'] .theme-status::before {
+  content: '搜尋'; color: var(--text-muted); font-size: 12px;
+  display: block; min-width: 150px; padding: 7px 12px;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+  background: rgba(255,255,255,0.04);
+}
+:root[data-theme='apple-music'] .settings-view { max-width: 960px; margin: 0 auto; padding: 42px; }
+:root[data-theme='apple-music'] .settings-panel { padding: 36px; border-radius: 22px; }

@@ -168,12 +168,23 @@ function selectBest(
 
 // Adjust LRC timestamps when the local file's duration differs from the
 // matched source (different intro/outro edits, live cuts, etc.).
+function annotateSourceDuration(lyrics: string, sourceDuration: number): string {
+    if (!Number.isFinite(sourceDuration) || sourceDuration <= 0 || /\[nw-source-duration:/i.test(lyrics)) {
+        return lyrics
+    }
+    return `[nw-source-duration:${sourceDuration.toFixed(3)}]\n${lyrics}`
+}
+
 async function calibrateTimeline(
     lyrics: string,
     sourceDuration: number,
     targetDuration: number,
     aiConfig?: AiConfig | null
 ): Promise<string> {
+    // Timeline correction is opt-in. The renderer performs non-destructive
+    // playback calibration so disabling it restores the original LRC timing.
+    if (aiConfig?.calibrationEnabled !== true) return lyrics
+
     const gap = Math.abs(targetDuration - sourceDuration)
     if (gap <= 2.0 || gap >= 30.0) return lyrics
 
@@ -316,7 +327,8 @@ export async function searchLyrics(req: LyricsRequest): Promise<string | null> {
             const score = getTitleMatchScore(exact.track, cleanString(title))
             if (score >= (duration ? 0.15 : 0.8)) {
                 log(`Fast path hit: "${exact.track}" [LRCLib exact] diff=${exact.diff.toFixed(2)}s`)
-                const calibrated = await calibrateTimeline(exact.lyrics, exact.duration, duration || 0, req.aiConfig)
+                const sourceLyrics = annotateSourceDuration(exact.lyrics, exact.duration)
+                const calibrated = await calibrateTimeline(sourceLyrics, exact.duration, duration || 0, req.aiConfig)
                 await writeLocalLrc(filePath, calibrated)
                 return convertLyrics(calibrated, lang)
             }
@@ -347,9 +359,10 @@ export async function searchLyrics(req: LyricsRequest): Promise<string | null> {
 
         if (best) {
             // 5. Timeline calibration
+            const sourceLyrics = annotateSourceDuration(best.lyrics, best.duration)
             const calibrated = (duration && best.duration)
-                ? await calibrateTimeline(best.lyrics, best.duration, duration, req.aiConfig)
-                : best.lyrics
+                ? await calibrateTimeline(sourceLyrics, best.duration, duration, req.aiConfig)
+                : sourceLyrics
             await writeLocalLrc(filePath, calibrated)
             return convertLyrics(calibrated, lang)
         }

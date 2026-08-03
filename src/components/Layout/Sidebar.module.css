@@ -6,7 +6,7 @@
     padding: 24px;
     padding-bottom: 120px;  
     box-sizing: border-box;
-    background: rgba(10, 10, 15, 0.4);
+    background: var(--sidebar-bg);
     backdrop-filter: blur(20px);
     -webkit-backdrop-filter: blur(20px);
     border-right: 1px solid var(--glass-border);
@@ -203,4 +203,104 @@
     color: var(--text-muted);
     padding-left: 12px;
     opacity: 0.5;
+}
+
+:global(:root[data-theme='spotify']) .sidebar {
+    width: 248px;
+    height: calc(100vh - 16px);
+    padding: 18px 12px 112px;
+    border: 0;
+    border-radius: 12px;
+    background: #121212;
+    backdrop-filter: none;
+}
+
+:global(:root[data-theme='spotify']) .brand {
+    margin-bottom: 24px;
+    padding-left: 10px;
+}
+
+:global(:root[data-theme='spotify']) .navItem {
+    padding: 10px 12px;
+    border-radius: 7px;
+    font-weight: 650;
+}
+
+:global(:root[data-theme='spotify']) .navItem:hover { transform: none; }
+:global(:root[data-theme='spotify']) .navItem.active {
+    color: #fff;
+    border-color: transparent;
+    background: #2a2a2a;
+    box-shadow: none;
+}
+
+:global(:root[data-theme='discord']) .sidebar {
+    width: 300px;
+    padding: 16px 12px 92px;
+    background: #2b2d31;
+    backdrop-filter: none;
+}
+
+:global(:root[data-theme='discord']) .brand {
+    height: 42px;
+    margin-bottom: 12px;
+    padding: 0 8px 12px;
+    border-bottom: 1px solid rgba(0,0,0,0.25);
+}
+
+:global(:root[data-theme='discord']) .logo { width: 30px; height: 30px; }
+:global(:root[data-theme='discord']) .navItem {
+    padding: 8px 10px;
+    border-radius: 4px;
+}
+
+:global(:root[data-theme='discord']) .navItem:hover { transform: none; }
+:global(:root[data-theme='discord']) .navItem.active {
+    color: #fff;
+    border-color: transparent;
+    background: #404249;
+    box-shadow: none;
+}
+
+:global(:root[data-theme='youtube-music']) .sidebar {
+    width: 228px;
+    padding: 20px 16px 92px;
+    background: #090909;
+    backdrop-filter: none;
+}
+
+:global(:root[data-theme='youtube-music']) .brand { margin-bottom: 28px; }
+:global(:root[data-theme='youtube-music']) .navItem {
+    border-radius: 2px;
+    padding: 11px 12px;
+}
+:global(:root[data-theme='youtube-music']) .navItem:hover { transform: none; }
+:global(:root[data-theme='youtube-music']) .navItem.active {
+    color: #fff;
+    border-color: transparent;
+    border-left: 3px solid var(--accent-primary);
+    background: rgba(255,255,255,0.08);
+    box-shadow: none;
+}
+
+:global(:root[data-theme='apple-music']) .sidebar {
+    width: 220px;
+    height: calc(100vh - 24px);
+    padding: 20px 14px 116px;
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 20px;
+    background: rgba(22,21,25,0.78);
+}
+
+:global(:root[data-theme='apple-music']) .brand { margin-bottom: 28px; }
+:global(:root[data-theme='apple-music']) .navItem {
+    border-radius: 9px;
+    padding: 10px 12px;
+}
+:global(:root[data-theme='apple-music']) .navItem:hover { transform: none; }
+:global(:root[data-theme='apple-music']) .navItem.active {
+    color: #fff;
+    border-color: transparent;
+    background: linear-gradient(90deg, rgba(250,45,85,0.28), rgba(168,85,247,0.14));
+    box-shadow: none;
 }

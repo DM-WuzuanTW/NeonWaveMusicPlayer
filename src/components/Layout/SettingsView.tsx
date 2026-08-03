@@ -1,6 +1,12 @@
-import { useState, useEffect } from 'react'
-import { RefreshCw, Download, CheckCircle, AlertCircle, Globe } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { RefreshCw, Download, CheckCircle, AlertCircle, Globe, Palette, Check, Bot, Languages, Info, Users, Captions, AudioLines } from 'lucide-react'
 import { ListeningPartyPanel } from '../Party/ListeningPartyPanel'
+import { applyTheme, getStoredTheme, THEMES, type AppTheme } from '../../theme'
+import {
+    DEFAULT_TRACK_CALIBRATION, getCalibrationComputeConfig, getCalibrationPrecision, getTrackCalibration,
+    saveCalibrationComputeConfig, saveTrackCalibration, type CalibrationAnchor, type CalibrationComputeConfig,
+    type CalibrationPrecision, type TrackCalibration
+} from '../../lyricsCalibration'
 
 const ScanProgress = () => {
     const [scanData, setScanData] = useState<{ current: number, total: number, success: number } | null>(null);
@@ -268,7 +274,11 @@ const CustomSelect = ({ value, onChange, options }: {
     )
 }
 
-export function SettingsView() {
+interface SettingsViewProps {
+    currentTrack?: { path: string; title: string } | null
+}
+
+export function SettingsView({ currentTrack }: SettingsViewProps) {
     const { status, progress, version, error, checkForUpdates, installUpdate } = useUpdater()
 
     const [lyricsProvider, setLyricsProvider] = useState(() => localStorage.getItem('neonwave_lyrics_ai_provider') || 'default')
@@ -277,18 +287,155 @@ export function SettingsView() {
     const [lyricsModel, setLyricsModel] = useState(() => localStorage.getItem('neonwave_lyrics_ai_model') || '')
     const [lyricsMode, setLyricsMode] = useState(() => localStorage.getItem('neonwave_lyrics_ai_mode') || 'filename')
     const [lyricsReasoning, setLyricsReasoning] = useState(() => localStorage.getItem('neonwave_lyrics_ai_reasoning') || 'none')
-    const [localCal, setLocalCal] = useState(() => localStorage.getItem('neonwave_local_audio_calibration') !== 'false')
     const [saveSuccess, setSaveSuccess] = useState(false)
+    const [theme, setTheme] = useState<AppTheme>(getStoredTheme)
+    const [activeCategory, setActiveCategory] = useState<'appearance' | 'presentation' | 'calibration' | 'lyrics' | 'connections' | 'downloads' | 'community' | 'about'>('appearance')
+    const [lyricsPresentation, setLyricsPresentation] = useState(() => localStorage.getItem('neonwave_lyrics_presentation') || 'danmaku')
+    const [calibrationEnabled, setCalibrationEnabled] = useState(() => localStorage.getItem('neonwave_lyrics_calibration_enabled') === 'true')
+    const [calibrationMode, setCalibrationMode] = useState(() => localStorage.getItem('neonwave_lyrics_calibration_mode') || 'adaptive')
+    const [calibrationPrecision, setCalibrationPrecision] = useState<CalibrationPrecision>(getCalibrationPrecision)
+    const [trackCalibration, setTrackCalibration] = useState<TrackCalibration>(() => getTrackCalibration(currentTrack?.path))
+    const calibrationDispatchTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+    const [gpuStatus, setGpuStatus] = useState<{ engineReady: boolean; models: Record<string, boolean>; engineVersion: string; gpuName: string } | null>(null)
+    const [gpuProgress, setGpuProgress] = useState<{ stage: string; percent: number; message: string } | null>(null)
+    const [gpuBusy, setGpuBusy] = useState(false)
+    const [gpuResult, setGpuResult] = useState<string>('')
+    const [computeDevices, setComputeDevices] = useState<{ gpus: Array<{ index: number; name: string; memoryMb: number }>; cpu: { name: string; logicalThreads: number; totalMemoryMb: number } } | null>(null)
+    const [computeConfig, setComputeConfig] = useState<CalibrationComputeConfig>(getCalibrationComputeConfig)
+
+    useEffect(() => {
+        setTrackCalibration(getTrackCalibration(currentTrack?.path))
+    }, [currentTrack?.path])
+
+    useEffect(() => () => {
+        if (calibrationDispatchTimer.current) clearTimeout(calibrationDispatchTimer.current)
+    }, [])
+
+    useEffect(() => {
+        window.ipcRenderer.getGpuLyricsStatus().then(setGpuStatus).catch(() => setGpuStatus(null))
+        window.ipcRenderer.getLyricsComputeDevices().then(setComputeDevices).catch(() => setComputeDevices(null))
+        return window.ipcRenderer.onGpuLyricsProgress(progress => setGpuProgress(progress))
+    }, [])
+
+    const categoryCopy = {
+        appearance: ['外觀與介面', '主題與迷你播放器顯示方式'],
+        presentation: ['歌詞呈現', '決定同步歌詞如何出現在播放畫面'],
+        calibration: ['歌詞校正', '針對翻唱、現場版與不同速度重新調整時間軸'],
+        lyrics: ['歌詞與 AI', '歌詞來源、AI 模型與辨識偏好'],
+        connections: ['連線與整合', 'Discord 狀態、圖片快取與服務整合'],
+        downloads: ['下載', '下載效能與檔案格式'],
+        community: ['一起聆聽', '建立或加入同步播放空間'],
+        about: ['關於 NeonWave', '版本資訊、應用程式更新與診斷']
+    } as const
+
+    const handleThemeChange = (nextTheme: AppTheme) => {
+        setTheme(nextTheme)
+        applyTheme(nextTheme)
+    }
+
+    const handleLyricsPresentationChange = (mode: string) => {
+        setLyricsPresentation(mode)
+        localStorage.setItem('neonwave_lyrics_presentation', mode)
+        window.dispatchEvent(new Event('neonwave:settings-changed'))
+    }
+
+    const handleCalibrationEnabledChange = (enabled: boolean) => {
+        setCalibrationEnabled(enabled)
+        localStorage.setItem('neonwave_lyrics_calibration_enabled', String(enabled))
+        window.dispatchEvent(new Event('neonwave:settings-changed'))
+    }
+
+    const handleCalibrationModeChange = (mode: string) => {
+        setCalibrationMode(mode)
+        localStorage.setItem('neonwave_lyrics_calibration_mode', mode)
+        window.dispatchEvent(new Event('neonwave:settings-changed'))
+    }
+
+    const handleCalibrationPrecisionChange = (precision: CalibrationPrecision) => {
+        setCalibrationPrecision(precision)
+        localStorage.setItem('neonwave_lyrics_calibration_precision', precision)
+        window.dispatchEvent(new Event('neonwave:settings-changed'))
+    }
+
+    const updateTrackCalibration = (patch: Partial<TrackCalibration>) => {
+        if (!currentTrack?.path) return
+        const candidate = { ...trackCalibration, ...patch }
+        const next: TrackCalibration = {
+            ...candidate,
+            offsetMs: Number.isFinite(candidate.offsetMs) ? Math.max(-10000, Math.min(10000, candidate.offsetMs)) : 0,
+            ratePercent: Number.isFinite(candidate.ratePercent) ? Math.max(85, Math.min(115, candidate.ratePercent)) : 100
+        }
+        setTrackCalibration(next)
+        saveTrackCalibration(currentTrack.path, next)
+        if (calibrationDispatchTimer.current) clearTimeout(calibrationDispatchTimer.current)
+        calibrationDispatchTimer.current = setTimeout(() => {
+            window.dispatchEvent(new Event('neonwave:settings-changed'))
+        }, 420)
+    }
+
+    const runGpuCalibration = async () => {
+        if (!currentTrack?.path || !calibrationMode.startsWith('gpu-')) return
+        setGpuBusy(true)
+        setGpuResult('')
+        try {
+            const result = await window.ipcRenderer.calibrateLyricsGpu(currentTrack.path, undefined, calibrationMode, true, computeConfig)
+            if (!result.ok) {
+                setGpuResult(result.error || 'GPU 校正失敗')
+                return
+            }
+            setGpuResult(`已存檔 · 可信度 ${Math.round((result.confidence || 0) * 100)}% · 第 ${result.runs || 1} 次學習`)
+            setGpuStatus(await window.ipcRenderer.getGpuLyricsStatus())
+            window.dispatchEvent(new Event('neonwave:settings-changed'))
+        } catch (error) {
+            setGpuResult(error instanceof Error ? error.message : 'GPU 校正失敗')
+        } finally {
+            setGpuBusy(false)
+        }
+    }
+
+    const updateComputeConfig = (patch: Partial<CalibrationComputeConfig>) => {
+        const next = { ...computeConfig, ...patch }
+        setComputeConfig(next)
+        saveCalibrationComputeConfig(next)
+        window.dispatchEvent(new Event('neonwave:settings-changed'))
+    }
 
     return (
-        <div style={{ padding: '40px', maxWidth: '800px' }}>
-            <h2 style={{ fontSize: '28px', marginBottom: '32px', fontWeight: 700 }}>設定</h2>
+        <div className="settings-view">
+            <header className="settings-page-header">
+                <div>
+                    <span className="settings-eyebrow">NEONWAVE CONTROL CENTER</span>
+                    <h2>設定</h2>
+                    <p>調整播放器外觀、服務與聆聽體驗</p>
+                </div>
+                <div className="settings-version-badge">v{version}</div>
+            </header>
 
-            <div style={{ marginBottom: '24px' }}>
-                <ListeningPartyPanel />
-            </div>
+            <div className="settings-layout">
+                <nav className="settings-nav" aria-label="設定分類">
+                    <button className={activeCategory === 'appearance' ? 'active' : ''} onClick={() => setActiveCategory('appearance')}><Palette size={18} /><span><strong>外觀與介面</strong><small>主題與顯示</small></span></button>
+                    <button className={activeCategory === 'presentation' ? 'active' : ''} onClick={() => setActiveCategory('presentation')}><Captions size={18} /><span><strong>歌詞呈現</strong><small>字幕與彈幕方式</small></span></button>
+                    <button className={activeCategory === 'calibration' ? 'active' : ''} onClick={() => setActiveCategory('calibration')}><AudioLines size={18} /><span><strong>歌詞校正</strong><small>翻唱時間軸</small></span></button>
+                    <button className={activeCategory === 'lyrics' ? 'active' : ''} onClick={() => setActiveCategory('lyrics')}><Languages size={18} /><span><strong>歌詞與 AI</strong><small>來源與模型</small></span></button>
+                    <button className={activeCategory === 'connections' ? 'active' : ''} onClick={() => setActiveCategory('connections')}><Bot size={18} /><span><strong>連線與整合</strong><small>Discord 與服務</small></span></button>
+                    <button className={activeCategory === 'downloads' ? 'active' : ''} onClick={() => setActiveCategory('downloads')}><Download size={18} /><span><strong>下載</strong><small>效能與格式</small></span></button>
+                    <button className={activeCategory === 'community' ? 'active' : ''} onClick={() => setActiveCategory('community')}><Users size={18} /><span><strong>一起聆聽</strong><small>同步播放空間</small></span></button>
+                    <div className="settings-nav-spacer" />
+                    <button className={activeCategory === 'about' ? 'active' : ''} onClick={() => setActiveCategory('about')}><Info size={18} /><span><strong>關於</strong><small>版本與更新</small></span></button>
+                </nav>
 
-            <div className="glass" style={{ padding: '32px', borderRadius: '24px' }}>
+                <main className="settings-content">
+                    <div className="settings-content-heading">
+                        <h3>{categoryCopy[activeCategory][0]}</h3>
+                        <p>{categoryCopy[activeCategory][1]}</p>
+                    </div>
+
+                    <section className={`settings-category settings-community ${activeCategory === 'community' ? '' : 'settings-category-hidden'}`}>
+                        <ListeningPartyPanel />
+                    </section>
+
+            <div className={`glass settings-panel ${activeCategory === 'community' ? 'settings-panel-hidden' : ''}`}>
+                <section className={`settings-category settings-about ${activeCategory === 'about' ? '' : 'settings-category-hidden'}`}>
                 <h3 style={{ fontSize: '20px', marginBottom: '24px' }}>關於 NeonWave</h3>
 
                 <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '24px' }}>
@@ -393,8 +540,10 @@ export function SettingsView() {
                             <button onClick={checkForUpdates} style={{ marginLeft: '16px', textDecoration: 'underline' }}>重試</button>
                         </div>
                     )}
+                </div>
+                </section>
 
-                    <div style={{ marginTop: '24px', borderTop: '1px solid var(--glass-border)', paddingTop: '24px' }}>
+                    <section className={`settings-category settings-connections ${activeCategory === 'connections' ? '' : 'settings-category-hidden'}`}>
                         <h4 style={{ marginBottom: '16px', color: 'var(--text-main)' }}>Discord RPC</h4>
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', marginBottom: '16px' }}>
                             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -454,10 +603,44 @@ export function SettingsView() {
 
                         {/* Progress UI managed by React state */}
                         <ScanProgress />
-                    </div>
+                    </section>
 
-                    <div style={{ marginTop: '24px', borderTop: '1px solid var(--glass-border)', paddingTop: '24px' }}>
+                    <section className={`settings-category settings-appearance ${activeCategory === 'appearance' ? '' : 'settings-category-hidden'}`}>
                         <h4 style={{ marginBottom: '16px', color: 'var(--text-main)' }}>介面設定</h4>
+
+                        <div style={{ marginBottom: '24px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '9px', color: 'var(--text-main)', marginBottom: '5px' }}>
+                                <Palette size={18} color="var(--accent-primary)" />
+                                <span>整體介面主題</span>
+                            </div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '14px' }}>
+                                每個主題包含專屬排版、間距、元件造型與配色；NeonWave 保留原本外觀。
+                            </div>
+                            <div className="theme-grid" role="radiogroup" aria-label="整體主題">
+                                {THEMES.map(option => (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        role="radio"
+                                        aria-checked={theme === option.id}
+                                        className={`theme-card${theme === option.id ? ' theme-card-selected' : ''}`}
+                                        onClick={() => handleThemeChange(option.id)}
+                                    >
+                                        <span className="theme-swatches" aria-hidden="true">
+                                            {option.colors.map(color => (
+                                                <span key={color} style={{ background: color }} />
+                                            ))}
+                                        </span>
+                                        <span className="theme-card-copy">
+                                            <strong>{option.name}</strong>
+                                            <small>{option.description}</small>
+                                        </span>
+                                        {theme === option.id && <Check className="theme-check" size={17} />}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
                                 <div style={{ color: 'var(--text-main)' }}>啟用 迷你播放器 (PIP)</div>
@@ -504,29 +687,6 @@ export function SettingsView() {
                             </select>
                         </div>
 
-                        {/* Subtitle Style Option */}
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px' }}>
-                            <div>
-                                <div style={{ color: 'var(--text-main)' }}>歌詞字幕/彈幕樣式</div>
-                                <div style={{ fontSize: '12px', color: 'var(--text-muted)', maxWidth: '480px', marginTop: '4px', lineHeight: '1.5' }}>
-                                    自訂懸浮歌詞/彈幕的視覺外觀樣式。
-                                </div>
-                            </div>
-                            <select
-                                className="settings-select"
-                                defaultValue={localStorage.getItem('neonwave_subtitle_style') || 'neon'}
-                                onChange={(e) => {
-                                    localStorage.setItem('neonwave_subtitle_style', e.target.value);
-                                    window.dispatchEvent(new Event('neonwave:settings-changed'));
-                                }}
-                            >
-                                <option value="neon">🌟 經典霓虹 (Classic Neon)</option>
-                                <option value="minimal">📝 極簡黑白 (Minimalist)</option>
-                                <option value="cyberpunk">🤖 賽博龐克 (Cyberpunk)</option>
-                                <option value="glass">🫧 毛玻璃膠囊 (Glass Capsule)</option>
-                            </select>
-                        </div>
-
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '20px', borderTop: '1px dashed rgba(255,255,255,0.08)', paddingTop: '16px' }}>
                             <div>
                                 <div style={{ color: 'var(--text-main)' }}>歌詞語言</div>
@@ -547,10 +707,267 @@ export function SettingsView() {
                                 <option value="original">原文（不轉換）</option>
                             </select>
                         </div>
-                    </div>
-                </div>
+                    </section>
 
-                <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '24px', marginTop: '24px' }}>
+                <section className={`settings-category settings-presentation ${activeCategory === 'presentation' ? '' : 'settings-category-hidden'}`}>
+                    <h4>歌詞顯示方式</h4>
+                    <div className="presentation-grid" role="radiogroup" aria-label="歌詞呈現方式">
+                        {[
+                            { id: 'danmaku', icon: '→', title: '橫向彈幕', description: '歌詞從畫面右側滑過，保留目前的動態效果' },
+                            { id: 'focus', icon: '◎', title: '中央聚焦', description: '目前歌詞置中顯示，下一句淡化預覽' },
+                            { id: 'subtitle', icon: '▱', title: '底部字幕', description: '像影片字幕一樣固定顯示於畫面底部' },
+                            { id: 'panel', icon: '≡', title: '沉浸歌詞', description: '以垂直歌詞面板顯示前後段落與目前進度' }
+                        ].map(mode => (
+                            <button
+                                key={mode.id}
+                                type="button"
+                                role="radio"
+                                aria-checked={lyricsPresentation === mode.id}
+                                className={`presentation-card${lyricsPresentation === mode.id ? ' selected' : ''}`}
+                                onClick={() => handleLyricsPresentationChange(mode.id)}
+                            >
+                                <span className="presentation-icon">{mode.icon}</span>
+                                <span className="presentation-copy">
+                                    <strong>{mode.title}</strong>
+                                    <small>{mode.description}</small>
+                                </span>
+                                {lyricsPresentation === mode.id && <Check size={17} />}
+                            </button>
+                        ))}
+                    </div>
+                    <div className="presentation-note">
+                        這項設定只改變歌詞出現的位置與動態方式，不會修改主題顏色或原始歌詞檔。
+                    </div>
+                </section>
+
+                <section className={`settings-category settings-calibration ${activeCategory === 'calibration' ? '' : 'settings-category-hidden'}`}>
+                    <h4>自動校正</h4>
+                    <div className="calibration-master">
+                        <div>
+                            <strong>啟用歌詞時間軸校正</strong>
+                            <small>預設關閉。開啟後會在載入歌曲時分析前奏與歌曲長度。</small>
+                        </div>
+                        <label className="switch">
+                            <input
+                                type="checkbox"
+                                checked={calibrationEnabled}
+                                onChange={(event) => handleCalibrationEnabledChange(event.target.checked)}
+                            />
+                            <span className="slider round" />
+                        </label>
+                    </div>
+
+                    <div className={`calibration-modes${calibrationEnabled ? '' : ' disabled'}`} role="radiogroup" aria-label="歌詞校正模式">
+                        {[
+                            { id: 'quick', badge: 'CPU · 快速', title: '整體偏移', description: '分析多句附近的聲音起點，只在結果一致時整體平移歌詞。' },
+                            { id: 'stretch', badge: 'CPU · 平衡', title: '翻唱比例', description: '依來源版本與目前歌曲的完整時長縮放時間軸，適合速度不同的翻唱。' },
+                            { id: 'adaptive', badge: '推薦', title: '智慧自動', description: '讀取完整音訊並結合來源時長；可信度不足時保留原始時間，不強行校正。' },
+                            { id: 'manual', badge: '精準控制', title: '手動精修', description: '略過自動猜測，只套用這首歌曲的偏移、比例與錨點設定。' },
+                            { id: 'gpu-fast', badge: '推薦 · 190 MB', title: 'Small 穩定對齊', description: '目前實測對原唱與翻唱最穩定，速度、顯存與逐句準確度最平衡。' },
+                            { id: 'gpu-precision', badge: '進階 · 539 MB', title: 'Medium 深度辨識', description: '適合咬字較清楚的長歌曲；模型更大，但歌聲對齊不一定比 Small 穩定。' },
+                            { id: 'gpu-studio', badge: '大型 · 874 MB', title: 'Large V3 Turbo', description: '適合複雜音源的實驗模式，耗時與顯存較高，建議校正失敗時再使用。' }
+                        ].map(mode => (
+                            <button
+                                key={mode.id}
+                                type="button"
+                                role="radio"
+                                disabled={!calibrationEnabled}
+                                aria-checked={calibrationMode === mode.id}
+                                className={`calibration-card${calibrationMode === mode.id ? ' selected' : ''}`}
+                                onClick={() => handleCalibrationModeChange(mode.id)}
+                            >
+                                <span className="calibration-badge">{mode.badge}</span>
+                                <strong>{mode.title}</strong>
+                                <small>{mode.description}</small>
+                                {calibrationMode === mode.id && <Check size={17} />}
+                            </button>
+                        ))}
+                    </div>
+
+                    <div className={`gpu-calibration-panel${calibrationMode.startsWith('gpu-') ? '' : ' gpu-hidden'}${calibrationEnabled ? '' : ' disabled'}`}>
+                        <div className="gpu-calibration-hero">
+                            <div className="gpu-orb"><AudioLines size={22} /></div>
+                            <div>
+                                <span>CUDA VOICE ALIGNMENT</span>
+                                <strong>{gpuStatus?.gpuName || 'NVIDIA RTX GPU'}</strong>
+                                <small>Whisper.cpp {gpuStatus?.engineVersion || ''} · 原歌詞提示辨識 · 單調時間軸對齊</small>
+                            </div>
+                            <div className={`gpu-ready-pill${gpuStatus?.engineReady ? ' ready' : ''}`}>
+                                {gpuStatus?.engineReady ? '引擎已就緒' : '首次執行時安裝'}
+                            </div>
+                        </div>
+                        <div className="compute-config-panel">
+                            <div className="compute-config-title">
+                                <div><strong>運算裝置</strong><small>模型品質與硬體分開設定</small></div>
+                                <div className="compute-backend-tabs">
+                                    {([
+                                        ['auto', '自動'], ['hybrid', 'CPU＋GPU · 推薦'], ['cuda', '單張 GPU'], ['cpu', 'CPU-only'], ['multi-gpu', '多 GPU 共識']
+                                    ] as [CalibrationComputeConfig['backend'], string][]).map(([value, label]) => (
+                                        <button key={value} type="button" className={computeConfig.backend === value ? 'active' : ''} onClick={() => updateComputeConfig({ backend: value })}>{label}</button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            {computeConfig.backend !== 'cpu' && (
+                                <div className="compute-device-list">
+                                    {(computeDevices?.gpus || []).map(gpu => {
+                                        const checked = computeConfig.gpuDevices.includes(gpu.index)
+                                        const multi = computeConfig.backend === 'multi-gpu'
+                                        return (
+                                            <label key={gpu.index} className={checked ? 'selected' : ''}>
+                                                <input
+                                                    type={multi ? 'checkbox' : 'radio'}
+                                                    name={multi ? undefined : 'lyrics-gpu-device'}
+                                                    checked={checked}
+                                                    onChange={() => updateComputeConfig({
+                                                        gpuDevices: multi
+                                                            ? checked
+                                                                ? computeConfig.gpuDevices.filter(index => index !== gpu.index)
+                                                                : [...computeConfig.gpuDevices, gpu.index].sort((a, b) => a - b)
+                                                            : [gpu.index]
+                                                    })}
+                                                />
+                                                <span><b>GPU {gpu.index}</b><strong>{gpu.name}</strong><small>{Math.round(gpu.memoryMb / 1024)} GB VRAM</small></span>
+                                            </label>
+                                        )
+                                    })}
+                                    {!computeDevices?.gpus.length && <div className="compute-empty">沒有偵測到 NVIDIA CUDA 顯示卡</div>}
+                                </div>
+                            )}
+
+                            <div className="compute-cpu-grid">
+                                <label>
+                                    <span><strong>CPU 執行緒</strong><output>{computeConfig.cpuThreads}</output></span>
+                                    <input type="range" min="1" max={computeDevices?.cpu.logicalThreads || 32} step="1" value={computeConfig.cpuThreads} onChange={(event) => updateComputeConfig({ cpuThreads: Number(event.target.value) })} />
+                                    <small>{computeDevices?.cpu.name || 'CPU'} · {computeDevices?.cpu.logicalThreads || '?'} logical threads</small>
+                                </label>
+                                <label>
+                                    <span><strong>並行處理器</strong><output>{computeConfig.cpuProcessors}</output></span>
+                                    <input type="range" min="1" max="4" step="1" value={computeConfig.cpuProcessors} onChange={(event) => updateComputeConfig({ cpuProcessors: Number(event.target.value) })} />
+                                    <small>會複製模型工作區；記憶體足夠時才提高。</small>
+                                </label>
+                            </div>
+                            {computeConfig.backend === 'multi-gpu' && computeConfig.gpuDevices.length < 2 && (
+                                <div className="compute-warning">多 GPU 共識至少要選擇兩張顯示卡；只有一張時會以單卡執行。</div>
+                            )}
+                            {computeConfig.backend === 'hybrid' && (
+                                <div className="compute-warning">推薦給 RTX 3060 Ti：GPU 執行語音模型，CPU 同時負責音訊前處理、解碼與歌詞對齊，可調整上方執行緒用量。</div>
+                            )}
+                        </div>
+                        <div className="gpu-calibration-body">
+                            <div className="gpu-learning-copy">
+                                <strong>自動校正與持續學習</strong>
+                                <small>每次重新學習會把新辨識錨點和歷史結果加權融合；低可信度結果不會覆蓋現有校正版。</small>
+                                <span>{currentTrack ? `目前歌曲 · ${currentTrack.title}` : '請先播放要校正的歌曲'}</span>
+                            </div>
+                            <button
+                                type="button"
+                                className="gpu-run-button"
+                                disabled={!calibrationEnabled || !currentTrack || gpuBusy}
+                                onClick={runGpuCalibration}
+                            >
+                                {gpuBusy ? <RefreshCw className="gpu-spin" size={15} /> : <AudioLines size={15} />}
+                                {gpuBusy ? 'GPU 分析中' : '校正並存檔'}
+                            </button>
+                        </div>
+                        {(gpuBusy || gpuProgress) && (
+                            <div className="gpu-progress-block">
+                                <div><span>{gpuProgress?.message || '準備 GPU 校正'}</span><b>{gpuProgress?.percent || 0}%</b></div>
+                                <div className="gpu-progress-track"><i style={{ width: `${gpuProgress?.percent || 0}%` }} /></div>
+                            </div>
+                        )}
+                        {gpuResult && <div className={`gpu-result${gpuResult.includes('失敗') ? ' error' : ''}`}>{gpuResult}</div>}
+                        <div className="gpu-save-note">
+                            儲存為同資料夾的 <code>.neonwave.lrc</code> 與 <code>.neonwave-calibration.json</code>；原始 <code>.lrc</code> 不會被覆蓋。
+                        </div>
+                    </div>
+
+                    <div className={`calibration-workbench${calibrationMode.startsWith('gpu-') ? ' gpu-hidden' : ''}${calibrationEnabled ? '' : ' disabled'}`}>
+                        <div className="calibration-workbench-head">
+                            <div>
+                                <span>ADVANCED TIMELINE</span>
+                                <strong>精細校正工作台</strong>
+                                <small>{currentTrack ? `目前歌曲 · ${currentTrack.title}` : '請先播放一首歌曲以啟用單曲精修'}</small>
+                            </div>
+                            <button
+                                type="button"
+                                className="calibration-reset"
+                                disabled={!calibrationEnabled || !currentTrack}
+                                onClick={() => updateTrackCalibration(DEFAULT_TRACK_CALIBRATION)}
+                            >
+                                <RefreshCw size={13} /> 重設單曲
+                            </button>
+                        </div>
+
+                        <div className="calibration-precision-row">
+                            <div>
+                                <strong>自動分析精準度</strong>
+                                <small>越積極越容易套用結果，也更可能受到伴奏誤判影響。</small>
+                            </div>
+                            <div className="calibration-segments" role="radiogroup" aria-label="自動分析精準度">
+                                {([
+                                    ['conservative', '保守'], ['balanced', '平衡'], ['aggressive', '積極']
+                                ] as [CalibrationPrecision, string][]).map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={!calibrationEnabled || calibrationMode === 'manual'}
+                                        className={calibrationPrecision === value ? 'active' : ''}
+                                        onClick={() => handleCalibrationPrecisionChange(value)}
+                                    >{label}</button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="calibration-fine-grid">
+                            <label className="calibration-control">
+                                <span><strong>整體時間偏移</strong><span className="calibration-number-wrap"><input className="calibration-number" type="number" min="-10000" max="10000" step="10" disabled={!calibrationEnabled || !currentTrack} value={trackCalibration.offsetMs} onChange={(event) => updateTrackCalibration({ offsetMs: Number(event.target.value) })} /><em>ms</em></span></span>
+                                <input
+                                    type="range" min="-5000" max="5000" step="50"
+                                    disabled={!calibrationEnabled || !currentTrack}
+                                    value={trackCalibration.offsetMs}
+                                    onChange={(event) => updateTrackCalibration({ offsetMs: Number(event.target.value) })}
+                                />
+                                <small>歌詞太慢往負值調，太快往正值調；每格 50 毫秒。</small>
+                            </label>
+
+                            <label className="calibration-control">
+                                <span><strong>時間軸速度比例</strong><span className="calibration-number-wrap"><input className="calibration-number" type="number" min="85" max="115" step="0.1" disabled={!calibrationEnabled || !currentTrack} value={trackCalibration.ratePercent} onChange={(event) => updateTrackCalibration({ ratePercent: Number(event.target.value) })} /><em>%</em></span></span>
+                                <input
+                                    type="range" min="90" max="110" step="0.1"
+                                    disabled={!calibrationEnabled || !currentTrack}
+                                    value={trackCalibration.ratePercent}
+                                    onChange={(event) => updateTrackCalibration({ ratePercent: Number(event.target.value) })}
+                                />
+                                <small>後段逐漸跑掉時使用；低於 100% 提前，高於 100% 延後。</small>
+                            </label>
+                        </div>
+
+                        <div className="calibration-anchor-row">
+                            <div>
+                                <strong>比例縮放錨點</strong>
+                                <small>選擇調整速度時固定不動的位置。</small>
+                            </div>
+                            <div className="calibration-segments" role="radiogroup" aria-label="比例縮放錨點">
+                                {([['start', '開頭'], ['middle', '中段'], ['end', '結尾']] as [CalibrationAnchor, string][]).map(([value, label]) => (
+                                    <button
+                                        key={value}
+                                        type="button"
+                                        disabled={!calibrationEnabled || !currentTrack}
+                                        className={trackCalibration.anchor === value ? 'active' : ''}
+                                        onClick={() => updateTrackCalibration({ anchor: value })}
+                                    >{label}</button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="calibration-info">
+                        建議先用「智慧自動」，再用整體偏移修正固定誤差；若歌曲越到後面偏差越大，再微調速度比例。單曲精修會依檔案個別保存。
+                    </div>
+                </section>
+
+                <section className={`settings-category settings-lyrics ${activeCategory === 'lyrics' ? '' : 'settings-category-hidden'}`}>
                     <h4 style={{ marginBottom: '16px', color: 'var(--text-main)' }}>AI 歌詞設定</h4>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -740,21 +1157,6 @@ export function SettingsView() {
                             </select>
                         </div>
 
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px' }}>
-                            <div>
-                                <span style={{ color: 'var(--text-muted)' }}>本地音訊起點偵測校準</span>
-                                <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.4)', marginTop: '2px' }}>自動分析本地音檔前奏靜音長度，精準對齊歌詞起點（省去手動調整）</div>
-                            </div>
-                            <label className="switch">
-                                <input
-                                    type="checkbox"
-                                    checked={localCal}
-                                    onChange={(e) => setLocalCal(e.target.checked)}
-                                />
-                                <span className="slider round"></span>
-                            </label>
-                        </div>
-
                         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginTop: '8px' }}>
                             <button
                                 type="button"
@@ -765,7 +1167,6 @@ export function SettingsView() {
                                     localStorage.setItem('neonwave_lyrics_ai_model', lyricsModel)
                                     localStorage.setItem('neonwave_lyrics_ai_mode', lyricsMode)
                                     localStorage.setItem('neonwave_lyrics_ai_reasoning', lyricsReasoning)
-                                    localStorage.setItem('neonwave_local_audio_calibration', String(localCal))
                                     window.dispatchEvent(new Event('neonwave:settings-changed'))
                                     setSaveSuccess(true)
                                     setTimeout(() => setSaveSuccess(false), 3000)
@@ -799,9 +1200,9 @@ export function SettingsView() {
                             )}
                         </div>
                     </div>
-                </div>
+                </section>
 
-                <div style={{ borderTop: '1px solid var(--glass-border)', paddingTop: '24px', marginTop: '24px' }}>
+                <section className={`settings-category settings-downloads ${activeCategory === 'downloads' ? '' : 'settings-category-hidden'}`}>
                     <h4 style={{ marginBottom: '16px', color: 'var(--text-main)' }}>下載設定</h4>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
@@ -841,11 +1242,215 @@ export function SettingsView() {
                             </select>
                         </div>
                     </div>
-                </div>
+                </section>
+            </div>
+                </main>
             </div>
 
             <style>{`
         @keyframes spin { 100% { transform: rotate(360deg); } }
+        @keyframes settings-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .settings-view {
+            width: 100%;
+            max-width: none !important;
+            margin: 0 !important;
+            padding: 34px 40px 140px !important;
+        }
+        .settings-page-header {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            max-width: 1180px;
+            margin: 0 auto 28px;
+        }
+        .settings-page-header h2 {
+            margin: 3px 0 2px;
+            font-size: clamp(30px, 4vw, 42px);
+            line-height: 1.1;
+            letter-spacing: -0.04em;
+        }
+        .settings-page-header p,
+        .settings-content-heading p {
+            margin: 0;
+            color: var(--text-muted);
+            font-size: 13px;
+        }
+        .settings-eyebrow {
+            color: var(--accent-primary);
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+        }
+        .settings-version-badge {
+            padding: 7px 11px;
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            background: rgba(255,255,255,0.045);
+            color: var(--text-muted);
+            font-size: 11px;
+            font-variant-numeric: tabular-nums;
+        }
+        .settings-layout {
+            display: grid;
+            grid-template-columns: 226px minmax(0, 1fr);
+            align-items: start;
+            gap: 26px;
+            max-width: 1180px;
+            margin: 0 auto;
+        }
+        .settings-nav {
+            position: sticky;
+            top: 22px;
+            display: flex;
+            flex-direction: column;
+            min-height: 520px;
+            padding: 10px;
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            background: color-mix(in srgb, var(--glass-bg) 82%, transparent);
+            backdrop-filter: blur(18px);
+            box-shadow: 0 18px 50px rgba(0,0,0,0.14);
+        }
+        .settings-nav button {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            width: 100%;
+            padding: 11px 12px;
+            border: 1px solid transparent;
+            border-radius: 11px;
+            color: var(--text-muted);
+            text-align: left;
+            transition: background .16s ease, color .16s ease, border-color .16s ease, transform .16s ease;
+        }
+        .settings-nav button:hover {
+            color: var(--text-main);
+            background: rgba(255,255,255,0.055);
+            transform: translateX(2px);
+        }
+        .settings-nav button.active {
+            color: var(--text-main);
+            border-color: color-mix(in srgb, var(--accent-primary) 26%, transparent);
+            background: color-mix(in srgb, var(--accent-primary) 13%, rgba(255,255,255,0.035));
+            box-shadow: inset 3px 0 0 var(--accent-primary);
+        }
+        .settings-nav button > svg { flex: none; color: currentColor; }
+        .settings-nav button.active > svg { color: var(--accent-primary); }
+        .settings-nav button > span {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .settings-nav strong { font-size: 13px; font-weight: 680; }
+        .settings-nav small { margin-top: 1px; color: var(--text-muted); font-size: 10px; }
+        .settings-nav-spacer { flex: 1; min-height: 18px; }
+        .settings-content { min-width: 0; }
+        .settings-content-heading {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            min-height: 64px;
+            margin-bottom: 14px;
+            padding: 0 4px;
+        }
+        .settings-content-heading h3 {
+            margin: 0 0 4px;
+            font-size: 22px;
+            letter-spacing: -0.025em;
+        }
+        .settings-panel {
+            width: 100%;
+            padding: 26px !important;
+            border-radius: 20px !important;
+            box-shadow: 0 22px 60px rgba(0,0,0,0.16);
+        }
+        .settings-panel-hidden,
+        .settings-category-hidden { display: none !important; }
+        .settings-category {
+            min-width: 0;
+            animation: settings-in .2s ease-out;
+        }
+        .settings-category > h3:first-child { display: none; }
+        .settings-category > h4:first-child {
+            margin: 0 0 18px !important;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: .09em;
+            text-transform: uppercase;
+            color: var(--text-muted) !important;
+        }
+        .settings-community { animation: settings-in .2s ease-out; }
+        .settings-community > * {
+            border-radius: 20px;
+            box-shadow: 0 22px 60px rgba(0,0,0,.16);
+        }
+        .settings-category > div[style*="border-top"] {
+            border-top-color: var(--glass-border) !important;
+        }
+        .settings-about > div:first-of-type {
+            padding: 20px;
+            margin-bottom: 14px !important;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            background: linear-gradient(120deg, color-mix(in srgb, var(--accent-primary) 14%, transparent), rgba(255,255,255,.035));
+        }
+        .settings-about > div:last-of-type {
+            padding: 20px !important;
+            border: 1px solid var(--glass-border) !important;
+            border-radius: 16px;
+            background: rgba(255,255,255,.025);
+        }
+        .settings-appearance > div {
+            padding: 18px !important;
+            margin-top: 10px !important;
+            border: 1px solid var(--glass-border) !important;
+            border-radius: 15px;
+            background: rgba(255,255,255,.026);
+        }
+        .settings-appearance > div:first-of-type { margin-top: 0 !important; }
+        .settings-connections > div {
+            padding: 17px;
+            border: 1px solid var(--glass-border);
+            border-radius: 14px;
+            background: rgba(255,255,255,.025);
+        }
+        .settings-connections > h4:not(:first-child) {
+            margin: 22px 2px 10px !important;
+            color: var(--text-muted) !important;
+            font-size: 11px;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+        }
+        .settings-lyrics > div {
+            gap: 10px !important;
+        }
+        .settings-lyrics > div > div,
+        .settings-downloads > div > div {
+            padding: 16px 17px !important;
+            margin-top: 0 !important;
+            border: 1px solid var(--glass-border) !important;
+            border-radius: 14px;
+            background: rgba(255,255,255,.025);
+        }
+        .settings-lyrics > div > div + div,
+        .settings-downloads > div > div + div { margin-top: 10px !important; }
+        .settings-lyrics > div > div[style*="margin-top: -8px"],
+        .settings-downloads > div > div[style*="margin-top: -8px"] {
+            padding: 0 4px !important;
+            border: 0 !important;
+            background: transparent;
+        }
+        .settings-category button:not(.theme-card):not(.settings-nav button) {
+            min-height: 38px;
+        }
+        .settings-category input[type="text"],
+        .settings-category input[type="password"],
+        .settings-category input:not([type]) {
+            min-height: 42px;
+        }
         .settings-select {
             appearance: none;
             background-color: rgba(0, 0, 0, 0.4);
@@ -876,6 +1481,432 @@ export function SettingsView() {
             color: #fff;
             font-size: 14px;
             padding: 12px;
+        }
+
+        .calibration-master {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 18px;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            background: color-mix(in srgb, var(--accent-primary) 7%, rgba(255,255,255,.025));
+        }
+        .calibration-master > div { display: flex; flex-direction: column; }
+        .calibration-master strong { font-size: 14px; }
+        .calibration-master small { margin-top: 4px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+        .calibration-modes {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            margin-top: 14px;
+            transition: opacity .18s ease;
+        }
+        .calibration-modes.disabled { opacity: .42; }
+        .calibration-card {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            min-height: 154px !important;
+            padding: 17px;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            background: rgba(255,255,255,.025);
+            text-align: left;
+            transition: transform .18s ease, border-color .18s ease, background .18s ease;
+        }
+        .calibration-card:not(:disabled):hover { transform: translateY(-2px); border-color: var(--accent-primary); }
+        .calibration-card.selected {
+            border-color: color-mix(in srgb, var(--accent-primary) 72%, transparent);
+            background: color-mix(in srgb, var(--accent-primary) 10%, rgba(255,255,255,.025));
+        }
+        .calibration-card > svg { position: absolute; top: 16px; right: 16px; color: var(--accent-primary); }
+        .calibration-badge {
+            margin-bottom: 18px;
+            padding: 4px 7px;
+            border-radius: 6px;
+            background: rgba(255,255,255,.07);
+            color: var(--accent-primary);
+            font-size: 9px;
+            font-weight: 800;
+            letter-spacing: .05em;
+        }
+        .calibration-card strong { font-size: 14px; color: var(--text-main); }
+        .calibration-card small { margin-top: 7px; color: var(--text-muted); font-size: 11px; line-height: 1.48; }
+        .calibration-info {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-left: 3px solid var(--accent-primary);
+            border-radius: 6px;
+            background: rgba(255,255,255,.025);
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+        .calibration-workbench {
+            margin-top: 16px;
+            overflow: hidden;
+            border: 1px solid var(--glass-border);
+            border-radius: 18px;
+            background: linear-gradient(145deg, rgba(255,255,255,.04), rgba(255,255,255,.018));
+            transition: opacity .18s ease;
+        }
+        .gpu-hidden { display: none !important; }
+        .gpu-calibration-panel {
+            margin-top: 16px;
+            overflow: hidden;
+            border: 1px solid color-mix(in srgb, var(--accent-primary) 38%, var(--glass-border));
+            border-radius: 18px;
+            background:
+                radial-gradient(circle at 8% 0%, color-mix(in srgb, var(--accent-primary) 13%, transparent), transparent 32%),
+                rgba(255,255,255,.022);
+        }
+        .gpu-calibration-panel.disabled { opacity: .44; }
+        .gpu-calibration-hero {
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr) auto;
+            align-items: center;
+            gap: 13px;
+            padding: 17px 18px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .gpu-orb {
+            display: grid;
+            place-items: center;
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
+            background: color-mix(in srgb, var(--accent-primary) 18%, rgba(255,255,255,.04));
+            color: var(--accent-primary);
+            box-shadow: 0 0 25px color-mix(in srgb, var(--accent-primary) 15%, transparent);
+        }
+        .gpu-calibration-hero > div:nth-child(2) { display: flex; flex-direction: column; min-width: 0; }
+        .gpu-calibration-hero span { color: var(--accent-primary); font-size: 8px; font-weight: 850; letter-spacing: .14em; }
+        .gpu-calibration-hero strong { margin-top: 3px; overflow: hidden; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }
+        .gpu-calibration-hero small { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
+        .gpu-ready-pill {
+            padding: 6px 9px;
+            border: 1px solid var(--glass-border);
+            border-radius: 999px;
+            color: var(--text-muted);
+            font-size: 9px;
+        }
+        .gpu-ready-pill.ready { border-color: rgba(34,197,94,.38); background: rgba(34,197,94,.08); color: #4ade80; }
+        .compute-config-panel { padding: 16px 18px; border-bottom: 1px solid var(--glass-border); background: rgba(0,0,0,.09); }
+        .compute-config-title { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+        .compute-config-title > div:first-child { display: flex; flex-direction: column; }
+        .compute-config-title strong { font-size: 12px; }
+        .compute-config-title small { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
+        .compute-backend-tabs { display: grid; grid-auto-flow: column; padding: 3px; border: 1px solid var(--glass-border); border-radius: 10px; background: rgba(0,0,0,.22); }
+        .compute-backend-tabs button { min-height: 29px !important; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text-muted); font-size: 9px; }
+        .compute-backend-tabs button.active { background: color-mix(in srgb, var(--accent-primary) 19%, rgba(255,255,255,.04)); color: var(--text-main); }
+        .compute-device-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 13px; }
+        .compute-device-list > label { display: flex; align-items: center; gap: 10px; padding: 11px; border: 1px solid var(--glass-border); border-radius: 11px; background: rgba(255,255,255,.022); }
+        .compute-device-list > label.selected { border-color: color-mix(in srgb, var(--accent-primary) 58%, transparent); background: color-mix(in srgb, var(--accent-primary) 8%, transparent); }
+        .compute-device-list input { accent-color: var(--accent-primary); }
+        .compute-device-list label > span { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 7px; min-width: 0; width: 100%; }
+        .compute-device-list b { color: var(--accent-primary); font-size: 8px; }
+        .compute-device-list strong { overflow: hidden; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+        .compute-device-list small { color: var(--text-muted); font-size: 8px; }
+        .compute-empty, .compute-warning { grid-column: 1 / -1; padding: 9px 11px; border-radius: 8px; background: rgba(245,158,11,.08); color: #fbbf24; font-size: 9px; }
+        .compute-cpu-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin-top: 10px; }
+        .compute-cpu-grid > label { display: flex; flex-direction: column; gap: 8px; padding: 11px; border: 1px solid var(--glass-border); border-radius: 11px; background: rgba(255,255,255,.018); }
+        .compute-cpu-grid label > span { display: flex; justify-content: space-between; gap: 10px; }
+        .compute-cpu-grid strong { font-size: 10px; }
+        .compute-cpu-grid output { color: var(--accent-primary); font: 10px ui-monospace, monospace; }
+        .compute-cpu-grid input { width: 100%; accent-color: var(--accent-primary); }
+        .compute-cpu-grid small { overflow: hidden; color: var(--text-muted); font-size: 8px; text-overflow: ellipsis; white-space: nowrap; }
+        .compute-warning { margin-top: 10px; }
+        .gpu-calibration-body {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            padding: 18px;
+        }
+        .gpu-learning-copy { display: flex; flex-direction: column; }
+        .gpu-learning-copy strong { font-size: 13px; }
+        .gpu-learning-copy small { max-width: 520px; margin-top: 5px; color: var(--text-muted); font-size: 10px; line-height: 1.5; }
+        .gpu-learning-copy span { margin-top: 10px; color: var(--accent-primary); font-size: 9px; }
+        .gpu-run-button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 7px;
+            min-width: 132px;
+            min-height: 40px !important;
+            padding: 0 14px;
+            border: 1px solid color-mix(in srgb, var(--accent-primary) 60%, transparent);
+            border-radius: 11px;
+            background: color-mix(in srgb, var(--accent-primary) 15%, rgba(255,255,255,.03));
+            color: var(--text-main);
+            font-size: 11px;
+            font-weight: 750;
+        }
+        .gpu-run-button:not(:disabled):hover { background: color-mix(in srgb, var(--accent-primary) 25%, rgba(255,255,255,.04)); }
+        .gpu-spin { animation: gpu-spin .9s linear infinite; }
+        @keyframes gpu-spin { to { transform: rotate(360deg); } }
+        .gpu-progress-block { padding: 0 18px 16px; }
+        .gpu-progress-block > div:first-child { display: flex; justify-content: space-between; gap: 10px; color: var(--text-muted); font-size: 9px; }
+        .gpu-progress-block b { color: var(--accent-primary); font-variant-numeric: tabular-nums; }
+        .gpu-progress-track { height: 4px; margin-top: 7px; overflow: hidden; border-radius: 999px; background: rgba(255,255,255,.08); }
+        .gpu-progress-track i { display: block; height: 100%; border-radius: inherit; background: var(--accent-primary); transition: width .2s ease; }
+        .gpu-result { margin: 0 18px 14px; padding: 9px 11px; border-radius: 8px; background: rgba(34,197,94,.08); color: #4ade80; font-size: 10px; }
+        .gpu-result.error { background: rgba(239,68,68,.08); color: #f87171; }
+        .gpu-save-note { padding: 11px 18px; border-top: 1px solid var(--glass-border); color: var(--text-muted); font-size: 9px; }
+        .gpu-save-note code { color: var(--text-main); font-size: 9px; }
+        .calibration-workbench.disabled { opacity: .44; }
+        .calibration-workbench-head,
+        .calibration-precision-row,
+        .calibration-anchor-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 16px 18px;
+            border-bottom: 1px solid var(--glass-border);
+        }
+        .calibration-workbench-head {
+            background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
+        }
+        .calibration-workbench-head > div,
+        .calibration-precision-row > div:first-child,
+        .calibration-anchor-row > div:first-child { display: flex; flex-direction: column; min-width: 0; }
+        .calibration-workbench-head span {
+            color: var(--accent-primary);
+            font-size: 8px;
+            font-weight: 850;
+            letter-spacing: .14em;
+        }
+        .calibration-workbench-head strong { margin-top: 4px; font-size: 15px; }
+        .calibration-workbench-head small,
+        .calibration-precision-row small,
+        .calibration-anchor-row small { margin-top: 4px; color: var(--text-muted); font-size: 10px; }
+        .calibration-reset {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 34px !important;
+            padding: 0 11px;
+            border: 1px solid var(--glass-border);
+            border-radius: 9px;
+            background: rgba(255,255,255,.04);
+            color: var(--text-main);
+            font-size: 10px;
+        }
+        .calibration-segments {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: minmax(64px, 1fr);
+            padding: 3px;
+            border: 1px solid var(--glass-border);
+            border-radius: 10px;
+            background: rgba(0,0,0,.2);
+        }
+        .calibration-segments button {
+            min-height: 30px !important;
+            padding: 0 10px;
+            border: 0;
+            border-radius: 7px;
+            background: transparent;
+            color: var(--text-muted);
+            font-size: 10px;
+        }
+        .calibration-segments button.active {
+            background: color-mix(in srgb, var(--accent-primary) 18%, rgba(255,255,255,.04));
+            color: var(--text-main);
+            box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-primary) 45%, transparent);
+        }
+        .calibration-fine-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 1px;
+            background: var(--glass-border);
+        }
+        .calibration-control {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            padding: 18px;
+            background: var(--bg-secondary, #121418);
+        }
+        .calibration-control > span { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+        .calibration-control strong { font-size: 12px; }
+        .calibration-number-wrap {
+            display: flex;
+            align-items: center;
+            min-width: 92px;
+            padding: 2px 7px;
+            border-radius: 7px;
+            background: rgba(0,0,0,.24);
+            color: var(--accent-primary);
+        }
+        .calibration-number {
+            width: 62px;
+            padding: 3px 0;
+            border: 0;
+            outline: 0;
+            background: transparent;
+            color: var(--accent-primary);
+            font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+            font-size: 10px;
+            text-align: right;
+        }
+        .calibration-number-wrap em { margin-left: 4px; font-size: 9px; font-style: normal; opacity: .7; }
+        .calibration-control input[type='range'] { width: 100%; accent-color: var(--accent-primary); }
+        .calibration-control small { color: var(--text-muted); font-size: 9px; line-height: 1.5; }
+        .calibration-anchor-row { border-bottom: 0; }
+
+        .presentation-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .presentation-card {
+            display: grid;
+            grid-template-columns: 48px minmax(0, 1fr) 20px;
+            align-items: center;
+            gap: 13px;
+            min-height: 92px !important;
+            padding: 16px;
+            border: 1px solid var(--glass-border);
+            border-radius: 16px;
+            background: rgba(255,255,255,.026);
+            text-align: left;
+            transition: transform .18s ease, border-color .18s ease, background .18s ease;
+        }
+        .presentation-card:hover {
+            transform: translateY(-2px);
+            border-color: color-mix(in srgb, var(--accent-primary) 55%, transparent);
+            background: rgba(255,255,255,.055);
+        }
+        .presentation-card.selected {
+            border-color: var(--accent-primary);
+            background: color-mix(in srgb, var(--accent-primary) 11%, rgba(255,255,255,.025));
+            box-shadow: 0 14px 34px color-mix(in srgb, var(--accent-primary) 12%, transparent);
+        }
+        .presentation-icon {
+            display: grid;
+            place-items: center;
+            width: 46px;
+            height: 46px;
+            border: 1px solid var(--glass-border);
+            border-radius: 13px;
+            background: rgba(0,0,0,.18);
+            color: var(--accent-primary);
+            font-size: 22px;
+            font-weight: 750;
+        }
+        .presentation-copy { display: flex; flex-direction: column; min-width: 0; }
+        .presentation-copy strong { color: var(--text-main); font-size: 14px; }
+        .presentation-copy small { margin-top: 4px; color: var(--text-muted); font-size: 11px; line-height: 1.45; }
+        .presentation-card > svg { color: var(--accent-primary); }
+        .presentation-note {
+            margin-top: 14px;
+            padding: 12px 14px;
+            border-left: 3px solid var(--accent-primary);
+            border-radius: 6px;
+            background: rgba(255,255,255,.025);
+            color: var(--text-muted);
+            font-size: 11px;
+            line-height: 1.5;
+        }
+
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 12px;
+        }
+        .theme-card {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            min-height: 68px;
+            padding: 12px;
+            text-align: left;
+            border: 1px solid var(--glass-border);
+            border-radius: 13px;
+            background: rgba(255, 255, 255, 0.035);
+            transition: transform 0.18s ease, border-color 0.18s ease, background 0.18s ease;
+        }
+        .theme-card:hover {
+            transform: translateY(-1px);
+            border-color: var(--accent-primary);
+            background: rgba(255, 255, 255, 0.07);
+        }
+        .theme-card-selected {
+            border-color: var(--accent-primary);
+            background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+            box-shadow: 0 0 18px var(--accent-glow, rgba(0, 255, 242, 0.28));
+        }
+        .theme-swatches {
+            display: flex;
+            width: 54px;
+            height: 40px;
+            overflow: hidden;
+            flex: none;
+            border-radius: 9px;
+            border: 1px solid rgba(255,255,255,0.12);
+        }
+        .theme-swatches span { flex: 1; }
+        .theme-card-copy {
+            display: flex;
+            flex-direction: column;
+            min-width: 0;
+        }
+        .theme-card-copy strong { color: var(--text-main); font-size: 13px; }
+        .theme-card-copy small { color: var(--text-muted); font-size: 11px; line-height: 1.35; margin-top: 3px; }
+        .theme-check { color: var(--accent-primary); flex: none; margin-left: auto; }
+        @media (max-width: 700px) {
+            .settings-view { padding: 24px 20px 130px !important; }
+            .settings-page-header { margin-bottom: 18px; }
+            .settings-layout { grid-template-columns: 1fr; gap: 14px; }
+            .settings-nav {
+                position: static;
+                min-height: 0;
+                flex-direction: row;
+                overflow-x: auto;
+                padding: 7px;
+            }
+            .settings-nav button { width: auto; min-width: max-content; }
+            .settings-nav button span small, .settings-nav-spacer { display: none; }
+            .settings-nav button.active { box-shadow: inset 0 -3px 0 var(--accent-primary); }
+            .settings-content-heading { min-height: 54px; }
+            .settings-panel { padding: 20px !important; }
+            .theme-grid { grid-template-columns: 1fr; }
+            .settings-appearance > div,
+            .settings-lyrics > div > div,
+            .settings-downloads > div > div {
+                align-items: stretch !important;
+                flex-direction: column !important;
+                gap: 10px;
+            }
+            .settings-select { width: 100%; max-width: none; }
+            .presentation-grid { grid-template-columns: 1fr; }
+            .calibration-modes { grid-template-columns: 1fr; }
+            .calibration-card { min-height: 126px !important; }
+            .calibration-workbench-head,
+            .calibration-precision-row,
+            .calibration-anchor-row { align-items: stretch; flex-direction: column; }
+            .calibration-fine-grid { grid-template-columns: 1fr; }
+            .calibration-segments { width: 100%; }
+            .gpu-calibration-hero { grid-template-columns: 42px minmax(0, 1fr); }
+            .gpu-ready-pill { grid-column: 1 / -1; justify-self: start; }
+            .gpu-calibration-body { align-items: stretch; flex-direction: column; }
+            .gpu-run-button { width: 100%; }
+            .compute-config-title { align-items: stretch; flex-direction: column; }
+            .compute-backend-tabs { grid-auto-flow: row; grid-template-columns: repeat(2, 1fr); }
+            .compute-device-list, .compute-cpu-grid { grid-template-columns: 1fr; }
+        }
+        @media (min-width: 701px) and (max-width: 1050px) {
+            .settings-layout { grid-template-columns: 190px minmax(0, 1fr); gap: 18px; }
+            .theme-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .calibration-modes { grid-template-columns: 1fr; }
+            .calibration-card { min-height: 124px !important; }
+            .calibration-fine-grid { grid-template-columns: 1fr; }
         }
         
         .switch {
