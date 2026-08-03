@@ -165,13 +165,13 @@ const DANMAKU_STYLES = `
 
 .lyrics-stage-body {
     display: grid;
-    grid-template-columns: minmax(300px, 1fr) minmax(330px, 410px);
-    align-items: center;
-    gap: clamp(48px, 8vw, 130px);
-    width: min(1180px, 92vw);
+    grid-template-columns: minmax(360px, 1.08fr) minmax(380px, .92fr);
+    align-items: stretch;
+    gap: clamp(30px, 4vw, 70px);
+    width: min(1480px, 93vw);
     min-height: 0;
     margin: 0 auto;
-    padding: 28px 0 44px;
+    padding: clamp(24px, 4vh, 48px) 0 38px;
 }
 .lyrics-stage-nowplaying {
     min-width: 0;
@@ -384,6 +384,130 @@ const DANMAKU_STYLES = `
     -webkit-text-stroke: .5px rgba(0,0,0,.6);
 }
 
+.lyrics-presentation.mode-kinetic {
+    top: 50%;
+    left: 50%;
+    width: min(88vw, 1180px);
+    transform: translate(-50%, -50%);
+    perspective: 900px;
+}
+.kinetic-kicker {
+    margin-bottom: 18px;
+    color: var(--accent-primary, #00fff2);
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: .28em;
+    text-transform: uppercase;
+    animation: kinetic-kicker-in .5s ease both;
+}
+.mode-kinetic .current-line {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    font-size: clamp(36px, 6.4vw, 94px);
+    font-weight: 950;
+    letter-spacing: -.055em;
+    line-height: 1.04;
+    text-transform: none;
+}
+.kinetic-char {
+    display: inline-block;
+    min-width: .26em;
+    opacity: 0;
+    filter: blur(12px);
+    transform: translate3d(var(--kinetic-x, 0), 46px, -110px) rotate(var(--kinetic-r, 0));
+    animation: kinetic-char-in .72s cubic-bezier(.16,.86,.25,1) forwards;
+    animation-delay: calc(var(--char-index) * 28ms);
+    text-shadow: 0 12px 36px rgba(0,0,0,.78), 0 0 42px color-mix(in srgb, var(--accent-primary) 20%, transparent);
+}
+.kinetic-char:nth-child(3n + 1) { --kinetic-x: -22px; --kinetic-r: -4deg; }
+.kinetic-char:nth-child(3n + 2) { --kinetic-x: 18px; --kinetic-r: 3deg; }
+.kinetic-ghost {
+    position: absolute;
+    inset: 52% 0 auto;
+    z-index: -1;
+    overflow: hidden;
+    color: transparent;
+    font-size: clamp(58px, 9vw, 140px);
+    font-weight: 950;
+    line-height: .82;
+    opacity: .13;
+    transform: translateY(-50%) scaleX(1.12);
+    -webkit-text-stroke: 1px var(--accent-primary, #00fff2);
+    white-space: nowrap;
+    mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+    animation: kinetic-ghost-drift 6s ease-in-out infinite alternate;
+}
+
+.lyrics-presentation.mode-rhythm-cut {
+    inset: 0;
+    display: grid;
+    place-items: center;
+    width: auto;
+    overflow: hidden;
+}
+.rhythm-vignette {
+    position: absolute;
+    inset: 0;
+    background:
+        linear-gradient(110deg, transparent 0 42%, color-mix(in srgb, var(--accent-primary) 12%, transparent) 42% 58%, transparent 58%),
+        radial-gradient(circle at 50% 50%, transparent 12%, rgba(0,0,0,.62) 100%);
+    animation: rhythm-flash .42s cubic-bezier(.2,.8,.2,1) both;
+}
+.rhythm-slice {
+    position: absolute;
+    top: 14%;
+    bottom: 14%;
+    left: 50%;
+    width: 2px;
+    background: linear-gradient(transparent, var(--accent-primary, #00fff2), transparent);
+    opacity: .48;
+    transform: skewX(-14deg) scaleY(0);
+    box-shadow: 0 0 28px var(--accent-primary, #00fff2);
+    animation: rhythm-slice .55s ease-out both;
+}
+.mode-rhythm-cut .rhythm-copy {
+    position: relative;
+    width: min(86vw, 1120px);
+    transform: rotate(-1.2deg);
+    animation: rhythm-copy-in .48s cubic-bezier(.12,.78,.18,1) both;
+}
+.mode-rhythm-cut .current-line {
+    font-size: clamp(38px, 6.8vw, 102px);
+    font-weight: 950;
+    letter-spacing: -.055em;
+    line-height: 1.02;
+    text-shadow: 8px 8px 0 rgba(0,0,0,.55), 0 0 34px color-mix(in srgb, var(--accent-primary) 22%, transparent);
+}
+.rhythm-index {
+    display: block;
+    margin-bottom: 9px;
+    color: var(--accent-primary, #00fff2);
+    font: 800 10px ui-monospace, monospace;
+    letter-spacing: .2em;
+}
+.rhythm-next {
+    margin-top: 20px;
+    color: rgba(255,255,255,.28);
+    font-size: clamp(13px, 1.5vw, 20px);
+    font-weight: 700;
+    letter-spacing: .06em;
+}
+@keyframes kinetic-char-in {
+    0% { opacity: 0; filter: blur(12px); transform: translate3d(var(--kinetic-x), 46px, -110px) rotate(var(--kinetic-r)) scale(.76); }
+    62% { opacity: 1; filter: blur(0); transform: translate3d(0, -4px, 12px) rotate(0) scale(1.035); }
+    100% { opacity: 1; filter: blur(0); transform: translate3d(0, 0, 0) rotate(0) scale(1); }
+}
+@keyframes kinetic-kicker-in { from { opacity: 0; letter-spacing: .7em; } to { opacity: 1; letter-spacing: .28em; } }
+@keyframes kinetic-ghost-drift { from { transform: translate(-3%, -50%) scaleX(1.12); } to { transform: translate(3%, -50%) scaleX(1.18); } }
+@keyframes rhythm-flash { 0% { opacity: .95; transform: scale(1.08); } 35% { opacity: .24; } 100% { opacity: .08; transform: scale(1); } }
+@keyframes rhythm-slice { 0% { opacity: .9; transform: translateX(-180px) skewX(-14deg) scaleY(0); } 45% { transform: translateX(0) skewX(-14deg) scaleY(1); } 100% { opacity: .15; transform: translateX(150px) skewX(-14deg) scaleY(.45); } }
+@keyframes rhythm-copy-in { 0% { opacity: 0; filter: blur(8px); transform: translate3d(8vw, 18px, 0) rotate(2.5deg) scale(1.13); } 70% { opacity: 1; filter: blur(0); transform: translate3d(-8px, 0, 0) rotate(-1.5deg) scale(.99); } 100% { opacity: 1; transform: rotate(-1.2deg) scale(1); } }
+
+@media (prefers-reduced-motion: reduce) {
+    .kinetic-char, .kinetic-kicker, .kinetic-ghost, .rhythm-vignette, .rhythm-slice, .mode-rhythm-cut .rhythm-copy { animation: none !important; opacity: 1; filter: none; transform: none; }
+}
+
 .lyrics-presentation.mode-panel {
     position: relative;
     display: flex;
@@ -433,6 +557,142 @@ const DANMAKU_STYLES = `
     background: var(--accent-primary, #00fff2);
 }
 
+.lyrics-media-panel {
+    display: flex;
+    min-width: 0;
+    min-height: 0;
+    flex-direction: column;
+    justify-content: center;
+}
+.lyrics-media-frame {
+    display: grid;
+    place-items: center;
+    width: min(100%, calc(100vh - 280px));
+    max-width: 680px;
+    aspect-ratio: 1;
+    align-self: center;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.13);
+    border-radius: 17px;
+    background:
+        radial-gradient(circle at 25% 20%, rgba(255,255,255,.22), transparent 25%),
+        linear-gradient(145deg, var(--accent-primary, #00fff2), var(--accent-secondary, #8b5cf6));
+    box-shadow: 0 30px 72px rgba(0,0,0,.48);
+    color: rgba(0,0,0,.72);
+    font-size: 76px;
+}
+.lyrics-media-frame img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    -webkit-user-drag: none;
+}
+.lyrics-media-caption {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 20px;
+    width: min(100%, calc(100vh - 280px));
+    max-width: 680px;
+    align-self: center;
+}
+.lyrics-media-caption .lyrics-stage-track { min-width: 0; }
+.lyrics-media-caption .lyrics-stage-meta { flex: none; }
+.lyrics-media-progress {
+    display: grid;
+    grid-template-columns: 42px minmax(0, 1fr) 42px;
+    align-items: center;
+    gap: 9px;
+    width: min(100%, calc(100vh - 280px));
+    max-width: 680px;
+    align-self: center;
+    margin-top: 15px;
+    color: rgba(255,255,255,.42);
+    font-size: 9px;
+    font-variant-numeric: tabular-nums;
+}
+.lyrics-media-progress > span:last-child { text-align: right; }
+.lyrics-media-progress > div { height: 3px; overflow: hidden; border-radius: 99px; background: rgba(255,255,255,.12); }
+.lyrics-media-progress i { display: block; height: 100%; border-radius: inherit; background: var(--accent-primary, #00fff2); }
+
+.lyrics-list-panel {
+    display: grid;
+    grid-template-rows: 58px minmax(0, 1fr) 42px;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    border: 1px solid rgba(255,255,255,.1);
+    border-radius: 17px;
+    background: rgba(5,6,9,.42);
+    box-shadow: 0 30px 72px rgba(0,0,0,.32);
+    backdrop-filter: blur(16px);
+}
+.lyrics-list-tabs {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 24px;
+    border-bottom: 1px solid rgba(255,255,255,.1);
+}
+.lyrics-list-tabs strong {
+    position: relative;
+    display: flex;
+    height: 100%;
+    align-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+}
+.lyrics-list-tabs strong::after {
+    content: '';
+    position: absolute;
+    right: 0;
+    bottom: -1px;
+    left: 0;
+    height: 2px;
+    border-radius: 99px 99px 0 0;
+    background: var(--accent-primary, #00fff2);
+}
+.lyrics-list-scroll {
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    padding: 42% clamp(24px, 3vw, 52px);
+    scroll-behavior: smooth;
+    scrollbar-color: rgba(255,255,255,.28) transparent;
+    scrollbar-width: thin;
+    mask-image: linear-gradient(to bottom, transparent 0, #000 11%, #000 89%, transparent 100%);
+}
+.lyrics-list-scroll .lyrics-panel-line {
+    margin: 0 0 clamp(19px, 2.6vh, 29px);
+    color: rgba(255,255,255,.36);
+    font-size: clamp(15px, 1.14vw, 19px);
+    font-weight: 620;
+    line-height: 1.52;
+    transition: color .24s ease, opacity .24s ease, transform .24s ease, font-size .24s ease;
+}
+.lyrics-list-scroll .lyrics-panel-line.active {
+    color: #fff;
+    font-size: clamp(20px, 1.55vw, 27px);
+    font-weight: 850;
+    transform: translateX(8px);
+    text-shadow: 0 5px 22px rgba(0,0,0,.72);
+}
+.lyrics-list-scroll .lyrics-panel-line.passed { color: rgba(255,255,255,.19); }
+.lyrics-list-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 22px;
+    border-top: 1px solid rgba(255,255,255,.08);
+    color: rgba(255,255,255,.34);
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: .11em;
+}
+
 @media (max-width: 760px) {
     .lyrics-stage-header { height: 64px; }
     .lyrics-stage-body { grid-template-columns: 1fr; width: 100%; gap: 18px; padding: 18px 20px 26px; }
@@ -443,6 +703,11 @@ const DANMAKU_STYLES = `
     .lyrics-phone { width: min(390px, 92vw); height: min(610px, 68vh); min-height: 430px; justify-self: center; border-radius: 38px; }
     .lyrics-phone-screen { border-radius: 30px; }
     .lyrics-presentation.mode-panel { text-align: left; }
+    .lyrics-stage-body { display: flex; flex-direction: column; overflow-y: auto; }
+    .lyrics-media-panel { flex: none; }
+    .lyrics-media-frame { width: min(72vw, 330px); }
+    .lyrics-media-caption, .lyrics-media-progress { width: min(72vw, 330px); }
+    .lyrics-list-panel { width: 100%; min-height: 58vh; flex: none; }
 }
 `
 
@@ -629,6 +894,7 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
     const [fetchTrigger, setFetchTrigger] = useState(0)
 
     const containerRef = useRef<HTMLDivElement>(null)
+    const panelLyricsRef = useRef<HTMLDivElement>(null)
     const activeCountRef = useRef(0)
     const statusTimerRef = useRef<ReturnType<typeof setTimeout>>()
     const statusClearTimerRef = useRef<ReturnType<typeof setTimeout>>()
@@ -688,6 +954,12 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
             setActiveIndex(idx)
         }
     }, [currentTime, lyrics, activeIndex])
+
+    useEffect(() => {
+        if (!visible || presentation !== 'panel' || activeIndex < 0) return
+        const activeLine = panelLyricsRef.current?.querySelector<HTMLElement>(`[data-line-index="${activeIndex}"]`)
+        activeLine?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, [activeIndex, presentation, visible])
 
     // Lyrics fetching
     const fetchLyrics = useCallback(async (title: string, artist: string, path: string = '', duration: number = 0) => {
@@ -928,6 +1200,11 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
 
     const durationValue = trackDuration || 0
     const progressPercent = durationValue > 0 ? Math.min(100, Math.max(0, (currentTime / durationValue) * 100)) : 0
+    const activeLineStart = activeIndex >= 0 ? lyrics[activeIndex]?.time || 0 : 0
+    const activeLineEnd = activeIndex >= 0 ? lyrics[activeIndex + 1]?.time || Math.max(activeLineStart + 2.4, durationValue) : 0
+    const activeLineDuration = Math.max(.8, activeLineEnd - activeLineStart)
+    const activeLineProgress = Math.min(1, Math.max(0, (currentTime - activeLineStart) / activeLineDuration))
+    const rhythmSegment = Math.min(3, Math.floor(activeLineProgress * 4))
     const formatClock = (value: number) => {
         const minutes = Math.floor(value / 60)
         const seconds = Math.floor(value % 60)
@@ -954,50 +1231,49 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                             </div>
                         </header>
                         <div className="lyrics-stage-body">
-                            <aside className="lyrics-stage-nowplaying">
-                                <div className="lyrics-stage-art">
+                            <section className="lyrics-media-panel">
+                                <div className="lyrics-media-frame">
                                     {trackArtwork ? <img src={trackArtwork} alt="" draggable={false} /> : <span>♫</span>}
                                 </div>
-                                <div className="lyrics-stage-track">
-                                    <strong>{trackTitle || '尚未播放'}</strong>
-                                    <span>{trackArtist || '未知演出者'}</span>
-                                </div>
-                                <div className="lyrics-stage-meta">
-                                    <span>同步歌詞</span>
-                                    <span>沉浸模式</span>
-                                    <span>{lyrics.length} 行</span>
-                                </div>
-                            </aside>
-                            <main className="lyrics-phone">
-                                <div className="lyrics-phone-screen">
-                                    <div className="lyrics-phone-island" />
-                                    <header className="lyrics-phone-header">
-                                        <span>LIVE LYRICS</span>
-                                        <strong>{trackTitle || '歌詞播放器'}</strong>
-                                    </header>
-                                    <div className="lyrics-stage-lyrics">
-                                        {activeIndex >= 0 && lyrics[activeIndex] ? (
-                                            <div className="lyrics-presentation mode-panel">
-                                                {lyrics.slice(Math.max(0, activeIndex - 3), activeIndex + 4).map((line, index) => {
-                                                    const absoluteIndex = Math.max(0, activeIndex - 3) + index
-                                                    return (
-                                                        <div key={`${line.time}-${absoluteIndex}`} className={`lyrics-panel-line${absoluteIndex === activeIndex ? ' active' : ''}`}>
-                                                            {line.text}
-                                                        </div>
-                                                    )
-                                                })}
-                                            </div>
-                                        ) : !loading && !error ? (
-                                            <div className="lyrics-panel-line active">準備顯示同步歌詞</div>
-                                        ) : null}
+                                <div className="lyrics-media-caption">
+                                    <div className="lyrics-stage-track">
+                                        <strong>{trackTitle || '尚未播放'}</strong>
+                                        <span>{trackArtist || '未知演出者'}</span>
                                     </div>
-                                    <footer className="lyrics-phone-footer">
-                                        <span>{formatClock(currentTime)}</span>
-                                        <div className="lyrics-phone-progress"><span style={{ width: `${progressPercent}%` }} /></div>
-                                        <span>{formatClock(durationValue)}</span>
-                                    </footer>
+                                    <div className="lyrics-stage-meta">
+                                        <span>同步歌詞</span>
+                                        <span>{lyrics.length} 行</span>
+                                    </div>
                                 </div>
-                            </main>
+                                <div className="lyrics-media-progress">
+                                    <span>{formatClock(currentTime)}</span>
+                                    <div><i style={{ width: `${progressPercent}%` }} /></div>
+                                    <span>{formatClock(durationValue)}</span>
+                                </div>
+                            </section>
+                            <section className="lyrics-list-panel">
+                                <header className="lyrics-list-tabs">
+                                    <strong>歌詞</strong>
+                                </header>
+                                <div className="lyrics-list-scroll" ref={panelLyricsRef}>
+                                    {lyrics.length ? lyrics.map((line, index) => (
+                                        <div
+                                            key={`${line.time}-${index}`}
+                                            data-line-index={index}
+                                            aria-current={index === activeIndex ? 'true' : undefined}
+                                            className={`lyrics-panel-line${index === activeIndex ? ' active' : ''}${index < activeIndex ? ' passed' : ''}`}
+                                        >
+                                            {line.text}
+                                        </div>
+                                    )) : !loading && !error ? (
+                                        <div className="lyrics-panel-line active">準備顯示同步歌詞</div>
+                                    ) : null}
+                                </div>
+                                <footer className="lyrics-list-footer">
+                                    <span>LIVE LYRICS</span>
+                                    <span>{activeIndex >= 0 ? `${activeIndex + 1} / ${lyrics.length}` : `${lyrics.length} 行`}</span>
+                                </footer>
+                            </section>
                         </div>
                     </div>
                 </>
@@ -1034,12 +1310,41 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
             <div ref={containerRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} />
 
             {presentation !== 'danmaku' && presentation !== 'panel' && activeIndex >= 0 && lyrics[activeIndex] && (
-                <div className={`lyrics-presentation mode-${presentation}`}>
-                    <div className="current-line">{lyrics[activeIndex].text}</div>
-                    {presentation === 'focus' && lyrics[activeIndex + 1] && (
-                        <div className="next-line">{lyrics[activeIndex + 1].text}</div>
-                    )}
-                </div>
+                presentation === 'kinetic' ? (
+                    <div key={`kinetic-${activeIndex}`} className="lyrics-presentation mode-kinetic">
+                        <div className="kinetic-kicker">現在播放 · {trackArtist || 'NEONWAVE'}</div>
+                        <div className="kinetic-ghost" aria-hidden="true">{lyrics[activeIndex].text}</div>
+                        <div className="current-line" aria-label={lyrics[activeIndex].text}>
+                            {Array.from(lyrics[activeIndex].text).map((character, index) => (
+                                <span
+                                    key={`${character}-${index}`}
+                                    className="kinetic-char"
+                                    aria-hidden="true"
+                                    style={{ '--char-index': index } as React.CSSProperties}
+                                >
+                                    {character === ' ' ? '\u00a0' : character}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                ) : presentation === 'rhythm-cut' ? (
+                    <div key={`rhythm-${activeIndex}-${rhythmSegment}`} className="lyrics-presentation mode-rhythm-cut">
+                        <div className="rhythm-vignette" />
+                        <div className="rhythm-slice" />
+                        <div className="rhythm-copy">
+                            <span className="rhythm-index">CUT {String(activeIndex + 1).padStart(2, '0')} · {Math.round(activeLineProgress * 100)}%</span>
+                            <div className="current-line">{lyrics[activeIndex].text}</div>
+                            {lyrics[activeIndex + 1] && <div className="rhythm-next">NEXT · {lyrics[activeIndex + 1].text}</div>}
+                        </div>
+                    </div>
+                ) : (
+                    <div className={`lyrics-presentation mode-${presentation}`}>
+                        <div className="current-line">{lyrics[activeIndex].text}</div>
+                        {presentation === 'focus' && lyrics[activeIndex + 1] && (
+                            <div className="next-line">{lyrics[activeIndex + 1].text}</div>
+                        )}
+                    </div>
+                )
             )}
 
             {/* Error fallback with retry */}

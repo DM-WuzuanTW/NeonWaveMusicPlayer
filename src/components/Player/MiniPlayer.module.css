@@ -1,0 +1,113 @@
+:global(html.mini-mode),
+:global(body.mini-mode),
+:global(body.mini-mode #root) {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: transparent !important;
+}
+
+.shell {
+    position: relative;
+    display: grid;
+    grid-template-columns: 88px minmax(0, 1fr);
+    gap: 12px;
+    width: calc(100vw - 12px);
+    height: calc(100vh - 12px);
+    margin: 6px;
+    padding: 12px;
+    overflow: hidden;
+    border: 1px solid rgba(255, 255, 255, .13);
+    border-radius: 20px;
+    background: linear-gradient(145deg, rgba(20, 22, 29, .96), rgba(7, 8, 12, .98));
+    box-shadow: 0 16px 38px rgba(0, 0, 0, .48), inset 0 1px rgba(255, 255, 255, .06);
+    color: #fff;
+    font-family: 'Outfit', 'Inter', sans-serif;
+    user-select: none;
+    -webkit-app-region: no-drag;
+}
+
+.shell, .shell * { box-sizing: border-box; }
+.shell button, .shell img, .shell svg, .content, .artwork { -webkit-app-region: no-drag; }
+
+.dragHandle {
+    position: absolute;
+    top: 3px;
+    left: 50%;
+    z-index: 20;
+    display: grid;
+    place-items: center;
+    width: 52px;
+    height: 17px;
+    transform: translateX(-50%);
+    border-radius: 0 0 9px 9px;
+    color: rgba(255, 255, 255, .38);
+    cursor: grab;
+    -webkit-app-region: drag;
+}
+
+.dragHandle:active { cursor: grabbing; }
+
+.artwork {
+    position: relative;
+    align-self: center;
+    width: 88px;
+    height: 88px;
+    overflow: hidden;
+    border-radius: 15px;
+    background: #111318;
+    box-shadow: 0 10px 24px rgba(0, 0, 0, .38);
+}
+
+.artwork img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    pointer-events: none;
+    -webkit-user-drag: none;
+    user-drag: none;
+}
+
+.artwork > span {
+    position: absolute;
+    right: 7px;
+    bottom: 7px;
+    width: 7px;
+    height: 7px;
+    border: 2px solid rgba(8, 9, 12, .8);
+    border-radius: 50%;
+    background: #6b7280;
+}
+
+.artwork > span.playing { background: var(--accent-primary, #00fff2); box-shadow: 0 0 9px var(--accent-primary, #00fff2); }
+.content { display: flex; min-width: 0; flex-direction: column; justify-content: center; padding-top: 5px; }
+.heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.trackText { display: flex; min-width: 0; flex-direction: column; }
+.trackText strong, .trackText span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trackText strong { font-size: 13px; line-height: 1.25; }
+.trackText span { margin-top: 3px; color: rgba(255, 255, 255, .48); font-size: 10px; }
+.windowActions { display: flex; gap: 3px; }
+.shell button {
+    display: grid;
+    place-items: center;
+    width: 27px;
+    height: 27px;
+    padding: 0;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: rgba(255, 255, 255, .64);
+    cursor: pointer;
+}
+.shell button:hover { background: rgba(255, 255, 255, .09); color: #fff; }
+.timeline { display: grid; grid-template-columns: 1fr auto; gap: 3px 8px; align-items: center; margin-top: 10px; }
+.timeline > div { grid-column: 1 / -1; height: 3px; overflow: hidden; border-radius: 99px; background: rgba(255, 255, 255, .11); }
+.timeline > div span { display: block; height: 100%; border-radius: inherit; background: var(--accent-primary, #00fff2); }
+.timeline small { color: rgba(255, 255, 255, .36); font-size: 8px; font-variant-numeric: tabular-nums; }
+.timeline small:last-child { justify-self: end; }
+.controls { position: relative; display: flex; align-items: center; justify-content: center; gap: 7px; margin-top: 4px; }
+.controls .playButton { width: 31px; height: 31px; border-radius: 50%; background: #fff; color: #090a0d; }
+.controls .playButton:hover { background: var(--accent-primary, #00fff2); color: #050607; }
+.modeBadge { position: absolute; right: 0; padding: 3px 6px; border: 1px solid rgba(250, 204, 21, .26); border-radius: 99px; background: rgba(250, 204, 21, .08); color: #fde047; font-size: 7px; }
+.passThrough { opacity: .62; }

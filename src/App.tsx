@@ -76,6 +76,15 @@ function MainApp() {
   }, [togglePlay])
 
   useEffect(() => {
+    const cleanupPrevious = (window as any).ipcRenderer.on('player:previousTrack', () => handlePrev())
+    const cleanupNext = (window as any).ipcRenderer.on('player:nextTrack', () => handleNext())
+    return () => {
+      if (cleanupPrevious) cleanupPrevious()
+      if (cleanupNext) cleanupNext()
+    }
+  }, [handlePrev, handleNext])
+
+  useEffect(() => {
     if (!(window as any).ipcRenderer?.on) return
 
     const cleanup = (window as any).ipcRenderer.on('party:command', (_event: any, command: any) => {
