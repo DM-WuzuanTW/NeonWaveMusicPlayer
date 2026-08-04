@@ -17,6 +17,7 @@
     "build:dir": "npm run clean && tsc && vite build && electron-builder --dir",
     "typecheck": "tsc --noEmit",
     "test:filenames": "node --experimental-strip-types --test tests/youtubeFilename.test.ts",
+    "test:lyrics-timeline": "node --experimental-strip-types --test tests/lyricsTimelineStability.test.ts",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
     "preview": "vite preview",
     "e2e": "node scripts/e2e-playback.cjs",

@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto'
 import extract from 'extract-zip'
 import { pinyin } from 'pinyin-pro'
 import { toSimplified } from './text'
+import { stabilizeInterludeGaps } from '../../src/utils/lyricsTimelineStability'
 
 export type GpuCalibrationMode = 'gpu-fast' | 'gpu-precision' | 'gpu-studio'
 export type CalibrationBackend = 'auto' | 'hybrid' | 'cuda' | 'cpu' | 'multi-gpu'
@@ -453,10 +454,12 @@ function alignLyrics(lines: ParsedLine[], transcript: TimedChar[]) {
     const coverageScore = validAnchors.length
         ? validAnchors.reduce((sum, anchor) => sum + anchor.coverage, 0) / validAnchors.length
         : 0
+    const stabilized = stabilizeInterludeGaps(lines, calibrated)
     return {
-        times: calibrated,
+        times: stabilized.times,
         confidence: Math.min(0.98, characterScore * 0.5 + lineScore * 0.32 + coverageScore * 0.18),
-        anchors: validAnchors.length
+        anchors: validAnchors.length,
+        protectedGaps: stabilized.protectedGaps
     }
 }
 
@@ -587,7 +590,8 @@ export async function runGpuLyricsCalibration(options: {
                 confidence: Math.min(0.98,
                     alignments.reduce((sum, alignment) => sum + alignment.confidence, 0) / alignments.length + 0.035
                 ),
-                anchors: Math.round(alignments.reduce((sum, alignment) => sum + alignment.anchors, 0) / alignments.length)
+                anchors: Math.round(alignments.reduce((sum, alignment) => sum + alignment.anchors, 0) / alignments.length),
+                protectedGaps: Math.max(...alignments.map(alignment => alignment.protectedGaps))
             }
             if (aligned.confidence < 0.32) throw new Error(`語音與歌詞相似度過低（${Math.round(aligned.confidence * 100)}%），已取消寫入`)
             if (history && aligned.confidence < history.bestConfidence * 0.72 && fsSync.existsSync(sidecars.calibrated)) {
@@ -635,7 +639,8 @@ export async function runGpuLyricsCalibration(options: {
             emit(onProgress, { stage: 'saving', percent: 0, message: '寫入獨立校正版與學習紀錄' })
             await fs.writeFile(sidecars.calibrated, calibratedLrc, 'utf8')
             await fs.writeFile(sidecars.history, JSON.stringify(nextHistory, null, 2), 'utf8')
-            emit(onProgress, { stage: 'complete', percent: 100, message: `校正完成 · 可信度 ${Math.round(confidence * 100)}% · 第 ${runs} 次學習` })
+            const gapMessage = aligned.protectedGaps > 0 ? ` · 保護 ${aligned.protectedGaps} 段間奏` : ''
+            emit(onProgress, { stage: 'complete', percent: 100, message: `校正完成 · 可信度 ${Math.round(confidence * 100)}% · 第 ${runs} 次學習${gapMessage}` })
             return {
                 ok: true,
                 lyrics: calibratedLrc,

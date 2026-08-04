@@ -4,6 +4,7 @@ import {
     getCalibrationComputeConfig, getCalibrationPrecision, getTrackCalibration, isTrackCalibrationChanged,
     type CalibrationPrecision, type TrackCalibration
 } from '../../lyricsCalibration'
+import { stabilizeInterludeGaps } from '../../utils/lyricsTimelineStability'
 
 interface LyricsOverlayProps {
     visible: boolean
@@ -625,43 +626,60 @@ const DANMAKU_STYLES = `
 }
 .handwritten-guide {
     position: absolute;
-    top: -14px;
+    top: -18px;
     left: 0;
-    width: clamp(86px, 12vw, 160px);
+    width: clamp(150px, 28vw, 360px);
     height: 2px;
     border-radius: 2px;
-    background: linear-gradient(90deg, transparent, rgba(255,255,255,.9));
-    filter: drop-shadow(0 0 5px rgba(255,255,255,.62));
+    background: linear-gradient(90deg, rgba(255,255,255,.96), color-mix(in srgb, var(--accent-primary, #00fff2) 58%, transparent) 16%, transparent 100%);
+    filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent-primary, #00fff2) 56%, transparent));
     transform-origin: right center;
-    animation: handwritten-guide-left .62s cubic-bezier(.18,.8,.22,1) both;
+    animation: handwritten-guide-left .78s cubic-bezier(.16,.78,.2,1) both;
+}
+.handwritten-guide::before {
+    position: absolute;
+    top: -7px;
+    left: 0;
+    width: 1px;
+    height: 16px;
+    background: rgba(255,255,255,.86);
+    box-shadow: 0 0 8px rgba(255,255,255,.65);
+    content: "";
 }
 .handwritten-guide::after {
     position: absolute;
     top: 50%;
-    right: -3px;
+    left: -4px;
     width: 7px;
     height: 7px;
-    border: 1px solid rgba(255,255,255,.9);
-    border-radius: 50%;
-    background: rgba(255,255,255,.72);
-    box-shadow: 0 0 12px rgba(255,255,255,.75);
+    border: 1px solid rgba(255,255,255,.92);
+    background: color-mix(in srgb, var(--accent-primary, #00fff2) 38%, rgba(255,255,255,.86));
+    box-shadow: 0 0 13px color-mix(in srgb, var(--accent-primary, #00fff2) 68%, transparent);
     content: "";
-    transform: translateY(-50%);
+    transform: translateY(-50%) rotate(45deg);
 }
 .position-upper-right .handwritten-guide,
 .position-middle-right .handwritten-guide,
 .position-lower-right .handwritten-guide {
     right: 0;
     left: auto;
-    background: linear-gradient(90deg, rgba(255,255,255,.9), transparent);
+    background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent-primary, #00fff2) 58%, transparent) 84%, rgba(255,255,255,.96));
     transform-origin: left center;
     animation-name: handwritten-guide-right;
+}
+.position-upper-right .handwritten-guide::before,
+.position-middle-right .handwritten-guide::before,
+.position-lower-right .handwritten-guide::before,
+.position-upper-right .handwritten-guide::after,
+.position-middle-right .handwritten-guide::after,
+.position-lower-right .handwritten-guide::after {
+    right: 0;
+    left: auto;
 }
 .position-upper-right .handwritten-guide::after,
 .position-middle-right .handwritten-guide::after,
 .position-lower-right .handwritten-guide::after {
-    right: auto;
-    left: -3px;
+    right: -4px;
 }
 .handwritten-line {
     display: flex;
@@ -688,7 +706,7 @@ const DANMAKU_STYLES = `
     display: inline-block;
     opacity: 0;
     animation: handwritten-segment-in .72s cubic-bezier(.22,.72,.24,1) forwards;
-    animation-delay: calc(.28s + var(--segment-index, 0) * 110ms);
+    animation-delay: calc(.36s + var(--segment-index, 0) * 110ms);
 }
 .handwritten-segment:nth-child(2n) { --segment-drift: 9px; }
 .handwritten-segment:nth-child(2n + 1) { --segment-drift: -7px; }
@@ -708,14 +726,16 @@ const DANMAKU_STYLES = `
     to { transform: translate3d(8px, 6px, 0); }
 }
 @keyframes handwritten-guide-left {
-    0% { opacity: 0; transform: translate3d(-70px, 5px, 0) scaleX(.12); }
-    55% { opacity: 1; }
-    100% { opacity: .68; transform: translate3d(0, 0, 0) scaleX(1); }
+    0% { opacity: 0; transform: translate3d(120px, 5px, 0) scaleX(.16); }
+    48% { opacity: 1; }
+    72% { opacity: .92; transform: translate3d(0, 0, 0) scaleX(1); }
+    100% { opacity: .34; transform: translate3d(0, 0, 0) scaleX(1); }
 }
 @keyframes handwritten-guide-right {
-    0% { opacity: 0; transform: translate3d(70px, 5px, 0) scaleX(.12); }
-    55% { opacity: 1; }
-    100% { opacity: .68; transform: translate3d(0, 0, 0) scaleX(1); }
+    0% { opacity: 0; transform: translate3d(-120px, 5px, 0) scaleX(.16); }
+    48% { opacity: 1; }
+    72% { opacity: .92; transform: translate3d(0, 0, 0) scaleX(1); }
+    100% { opacity: .34; transform: translate3d(0, 0, 0) scaleX(1); }
 }
 @keyframes kinetic-char-in {
     0% { opacity: 0; filter: blur(12px); transform: translate3d(var(--kinetic-x), 46px, -110px) rotate(var(--kinetic-r)) scale(.76); }
@@ -936,7 +956,7 @@ const DANMAKU_STYLES = `
     .lyrics-presentation.mode-handwritten.position-middle-right { top: 49%; right: 28px; }
     .lyrics-presentation.mode-handwritten.position-lower-left { top: 62%; left: 22px; }
     .lyrics-presentation.mode-handwritten.position-lower-right { top: 69%; right: 22px; }
-    .handwritten-guide { width: clamp(72px, 27vw, 112px); }
+    .handwritten-guide { width: clamp(120px, 44vw, 190px); }
     .handwritten-line { font-size: clamp(25px, 7.4vw, 35px); }
     .handwritten-line.long { font-size: clamp(21px, 6.1vw, 29px); }
     .handwritten-line.very-long { font-size: clamp(18px, 5.2vw, 25px); }
@@ -1257,10 +1277,14 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                             }
                             const gpuParsed = parseLrc(gpuResult.lyrics)
                             if (gpuParsed.length < 3) throw new Error('GPU 校正版內容不完整')
-                            parsed = gpuParsed
+                            const stabilized = stabilizeInterludeGaps(parsed, gpuParsed.map(line => line.time))
+                            parsed = gpuParsed.map((line, index) => ({ ...line, time: stabilized.times[index] }))
+                            const protectedGapStatus = stabilized.protectedGaps > 0
+                                ? ` · 已保護 ${stabilized.protectedGaps} 段間奏`
+                                : ''
                             calibrationStatus = gpuResult.cached
-                                ? `已載入 GPU 校正版 · ${Math.round((gpuResult.confidence || 0) * 100)}%`
-                                : `GPU 校正完成 · ${Math.round((gpuResult.confidence || 0) * 100)}% · 第 ${gpuResult.runs || 1} 次學習`
+                                ? `已載入 GPU 校正版 · ${Math.round((gpuResult.confidence || 0) * 100)}%${protectedGapStatus}`
+                                : `GPU 校正完成 · ${Math.round((gpuResult.confidence || 0) * 100)}% · 第 ${gpuResult.runs || 1} 次學習${protectedGapStatus}`
                         } else if (calibrationMode === 'manual') {
                             calibrationStatus = '手動精修模式'
                         } else {

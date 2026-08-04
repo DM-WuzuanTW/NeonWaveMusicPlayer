@@ -1,12 +1,11 @@
 .container {
-    padding: 24px;
+    padding: clamp(16px, 2vw, 32px);
     height: 100%;
     display: flex;
     flex-direction: column;
-    max-width: 1200px;
     width: 100%;
+    min-width: 0;
     box-sizing: border-box;
-     
 }
 
 .searchBar {
@@ -78,6 +77,7 @@
 
 .results {
     flex: 1;
+    min-width: 0;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -176,8 +176,8 @@
 
 .artistGrid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-    gap: 20px;
+    grid-template-columns: repeat(auto-fill, minmax(min(170px, 100%), 1fr));
+    gap: clamp(14px, 1.3vw, 24px);
     padding-bottom: 32px;
 }
 
@@ -306,4 +306,43 @@
     background: var(--accent-primary) !important;
     color: #000 !important;
     font-weight: 600;
+}
+
+@media (max-width: 760px) {
+    .container { padding: 16px; }
+    .searchBar { gap: 8px; margin-bottom: 18px; }
+    .input { height: 44px; padding: 0 13px; font-size: 14px; }
+    .searchBtn { height: 44px; padding: 0 16px; }
+    .iconBtn { width: 44px; padding: 0; }
+    .sectionTitle { margin-bottom: 16px; font-size: 17px; }
+    .tabsContainer { margin: 0 -4px 16px; }
+    .artistGrid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+    }
+    .artistCard {
+        min-width: 0;
+        padding: 18px 10px;
+        border-radius: 16px;
+        gap: 12px;
+    }
+    .artistName {
+        max-width: 100%;
+        overflow: hidden;
+        font-size: 14px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .resultItem { gap: 11px; padding: 10px; }
+    .thumbnail { width: 52px; height: 52px; }
+    .actions { gap: 5px; }
+    .actionBtn { width: 34px; height: 34px; }
+}
+
+@media (max-width: 430px) {
+    .container { padding: 12px; }
+    .searchBtn { padding: 0 12px; }
+    .searchBtn svg { flex: none; }
+    .artistGrid { gap: 9px; }
+    .artistCard { padding: 15px 8px; }
 }
