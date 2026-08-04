@@ -21,6 +21,7 @@ import {
     cleanString, convertLyrics, extractChinese, getTitleMatchScore, hasChinese,
     type LyricsLang, parseArtistTitle, parseChineseSongInfo, stripMarkdownFences
 } from './text'
+import { parseYouTubeFilename } from '../../src/utils/youtubeFilename'
 
 export interface LyricsRequest {
     title?: string
@@ -31,6 +32,15 @@ export interface LyricsRequest {
 }
 
 const log = (...args: unknown[]) => console.log('[Lyrics]', ...args)
+
+const PLACEHOLDER_ARTISTS = new Set([
+    '未知演出者', '未知藝術家', '未知艺术家', 'unknown', 'unknown artist', 'various artists'
+])
+
+function usableArtist(value?: string): string {
+    const artist = (value || '').trim()
+    return PLACEHOLDER_ARTISTS.has(artist.toLowerCase()) ? '' : artist
+}
 
 function resolveLang(aiConfig?: AiConfig | null): LyricsLang {
     const lang = aiConfig?.lang
@@ -88,6 +98,8 @@ function buildQueries(title: string, artist: string, filePath?: string): string[
 
     if (filePath) {
         const filename = path.basename(filePath, path.extname(filePath))
+        const parsedFilename = parseYouTubeFilename(filename)
+        parsedFilename.queries.forEach(push)
 
         // Variety-show pattern: "歌手《歌名》..."
         const varietyMatch = filename.match(/(.+?)《(.+?)》(.*)/)
@@ -120,16 +132,31 @@ function dedupeCandidates(candidates: LyricCandidate[]): LyricCandidate[] {
 
 function selectBest(
     candidates: LyricCandidate[],
-    targetTitle: string,
+    targetTitles: string[],
     duration?: number
 ): LyricCandidate | null {
     if (candidates.length === 0) return null
 
     let pool = dedupeCandidates(candidates)
-    const targetTitleClean = cleanString(targetTitle)
+    const cleanTargets = targetTitles.map(cleanString).filter(Boolean)
     pool.forEach(c => {
-        c.titleScore = getTitleMatchScore(c.track, targetTitleClean)
+        c.titleScore = Math.max(0, ...cleanTargets.map(target => getTitleMatchScore(c.track, target)))
     })
+
+    // Duration is not an identity signal: unrelated songs frequently have the
+    // same length. Require a credible title first, then use duration to choose
+    // between versions of that title.
+    const strongTitleMatches = pool.filter(c => (c.titleScore || 0) >= 0.8)
+    const plausibleTitleMatches = pool.filter(c => (c.titleScore || 0) >= 0.55)
+    if (strongTitleMatches.length > 0) {
+        pool = strongTitleMatches
+    } else if (plausibleTitleMatches.length > 0) {
+        pool = plausibleTitleMatches
+    } else {
+        const topScore = Math.max(0, ...pool.map(c => c.titleScore || 0))
+        log(`No candidate passed title threshold; best score=${topScore.toFixed(2)}`)
+        return null
+    }
 
     if (duration && duration > 0) {
         const strict = pool.filter(c => c.diff <= 4)
@@ -149,21 +176,13 @@ function selectBest(
 
     pool.sort((a, b) => {
         const scoreDiff = (b.titleScore || 0) - (a.titleScore || 0)
-        if (Math.abs(scoreDiff) > 0.2) return scoreDiff
+        if (Math.abs(scoreDiff) > 0.05) return scoreDiff
         return a.diff - b.diff
     })
 
     const top = pool[0]
-    // A tight duration match is a strong signal, so accept much weaker title
-    // similarity — but only when we actually know the duration.
-    const hasStrictDuration = !!duration && duration > 0 && top.diff <= 4
-    const threshold = hasStrictDuration ? 0.15 : 0.55
-    if ((top.titleScore || 0) >= threshold) {
-        log(`Selected: "${top.track}" by ${top.artist} [${top.source}] diff=${top.diff.toFixed(2)}s score=${(top.titleScore || 0).toFixed(2)}`)
-        return top
-    }
-    log(`Best candidate "${top.track}" score ${(top.titleScore || 0).toFixed(2)} below threshold ${threshold}`)
-    return null
+    log(`Selected: "${top.track}" by ${top.artist} [${top.source}] diff=${top.diff.toFixed(2)}s score=${(top.titleScore || 0).toFixed(2)}`)
+    return top
 }
 
 // Adjust LRC timestamps when the local file's duration differs from the
@@ -307,9 +326,20 @@ async function generateWithAI(req: LyricsRequest): Promise<string | null> {
 
 export async function searchLyrics(req: LyricsRequest): Promise<string | null> {
     const title = req.title || ''
-    const artist = req.artist || ''
+    const artist = usableArtist(req.artist)
     const { filePath, duration } = req
     const lang = resolveLang(req.aiConfig)
+    const parsedFilename = filePath ? parseYouTubeFilename(filePath) : null
+    const effectiveTitle = title
+        || parseChineseSongInfo(filePath ? path.basename(filePath) : '').title
+        || parsedFilename?.title
+        || (filePath ? cleanString(path.basename(filePath, path.extname(filePath))) : '')
+    const titleCandidates = [effectiveTitle]
+    if (parsedFilename?.title) titleCandidates.push(parsedFilename.title)
+    if (parsedFilename?.confidence === 'medium' && parsedFilename.artist) {
+        titleCandidates.push(parsedFilename.artist)
+    }
+    const uniqueTitleCandidates = Array.from(new Set(titleCandidates.filter(Boolean)))
 
     try {
         log(`Request: title="${title}" artist="${artist}" duration=${duration} provider=${req.aiConfig?.provider || 'default'}`)
@@ -321,17 +351,32 @@ export async function searchLyrics(req: LyricsRequest): Promise<string | null> {
             return convertLyrics(cached, lang)
         }
 
-        // 2. LRCLib exact-match fast path
-        const exact = await lrclibGetExact(title, artist, duration).catch(() => null)
-        if (exact && (!duration || exact.diff <= 4)) {
-            const score = getTitleMatchScore(exact.track, cleanString(title))
-            if (score >= (duration ? 0.15 : 0.8)) {
-                log(`Fast path hit: "${exact.track}" [LRCLib exact] diff=${exact.diff.toFixed(2)}s`)
-                const sourceLyrics = annotateSourceDuration(exact.lyrics, exact.duration)
-                const calibrated = await calibrateTimeline(sourceLyrics, exact.duration, duration || 0, req.aiConfig)
-                await writeLocalLrc(filePath, calibrated)
-                return convertLyrics(calibrated, lang)
+        // 2. LRCLib exact-match fast path. Parsed filename pairs are search-only
+        // and never replace the track metadata shown by the renderer.
+        const exactPairs: Array<{ title: string; artist: string }> = []
+        const addExactPair = (pairTitle: string, pairArtist: string) => {
+            if (!pairTitle || !pairArtist) return
+            if (!exactPairs.some(pair => pair.title === pairTitle && pair.artist === pairArtist)) {
+                exactPairs.push({ title: pairTitle, artist: pairArtist })
             }
+        }
+        addExactPair(title, artist)
+        if (parsedFilename) {
+            addExactPair(parsedFilename.title, parsedFilename.artist)
+            if (parsedFilename.confidence === 'medium') {
+                addExactPair(parsedFilename.artist, parsedFilename.title)
+            }
+        }
+        const exactCandidates = (await Promise.all(
+            exactPairs.map(pair => lrclibGetExact(pair.title, pair.artist, duration).catch(() => null))
+        )).filter((candidate): candidate is LyricCandidate => candidate !== null)
+        const exact = selectBest(exactCandidates, uniqueTitleCandidates, duration)
+        if (exact && (!duration || exact.diff <= 4)) {
+            log(`Fast path hit: "${exact.track}" [LRCLib exact] diff=${exact.diff.toFixed(2)}s`)
+            const sourceLyrics = annotateSourceDuration(exact.lyrics, exact.duration)
+            const calibrated = await calibrateTimeline(sourceLyrics, exact.duration, duration || 0, req.aiConfig)
+            await writeLocalLrc(filePath, calibrated)
+            return convertLyrics(calibrated, lang)
         }
 
         // 3. Multi-provider sweep over deduplicated queries
@@ -345,17 +390,14 @@ export async function searchLyrics(req: LyricsRequest): Promise<string | null> {
             ])
         )
         const candidates: LyricCandidate[] = []
-        if (exact) candidates.push(exact)
+        candidates.push(...exactCandidates)
         for (const result of settled) {
             if (result.status === 'fulfilled') candidates.push(...result.value)
         }
         log(`Sweep collected ${candidates.length} raw candidates`)
 
         // 4. Score and select
-        const effectiveTitle = title
-            || parseChineseSongInfo(filePath ? path.basename(filePath) : '').title
-            || (filePath ? cleanString(path.basename(filePath, path.extname(filePath))) : '')
-        const best = selectBest(candidates, effectiveTitle, duration)
+        const best = selectBest(candidates, uniqueTitleCandidates, duration)
 
         if (best) {
             // 5. Timeline calibration
