@@ -27,6 +27,34 @@ for (const [filename, title, artist] of cases) {
 test('keeps both orientations for an ambiguous bare dash name', () => {
     const parsed = parseYouTubeFilename('十年 - 陳奕迅『懷抱既然不能逗留』【動態歌詞Lyrics】.m4a')
     assert.deepEqual(parsed.queries.slice(0, 2), ['陳奕迅 十年', '十年 陳奕迅'])
+    assert.ok(parsed.queries.includes('十年'))
+    assert.ok(parsed.queries.includes('陳奕迅'))
+})
+
+test('searches both sides alone for title-first Chinese filenames', () => {
+    const parsed = parseYouTubeFilename('側臉 - 於果『我知道從一開始隨隨便便深深淺淺，不過是愛的自由不計前嫌不知疲倦』【動態歌詞】.mp4')
+    assert.deepEqual(parsed.queries, ['於果 側臉', '側臉 於果', '於果', '側臉'])
+})
+
+test('keeps hashtagged song names inside title brackets', () => {
+    const parsed = parseYouTubeFilename('【纯享】 #张杰 演唱《#天下》一开嗓又稳又满满代入感 _《时光音乐会•老友记》｜MangoTV.m4a')
+    assert.equal(parsed.title, '天下')
+    assert.equal(parsed.artist, '张杰')
+    assert.ok(parsed.queries.includes('天下 张杰'))
+})
+
+test('parses compact dashes without splitting romanized artist names', () => {
+    const compact = parseYouTubeFilename('白小白-我愛你不問歸期[Official Music Video] 官方完整版MV.m4a')
+    assert.ok(compact.queries.includes('我愛你不問歸期'))
+    const romanized = parseYouTubeFilename('[avex官方] A-Lin 給我一個理由忘記 (MV完整版).m4a')
+    assert.equal(romanized.confidence, 'low')
+    assert.ok(romanized.queries.includes('給我一個理由忘記'))
+})
+
+test('adds individual Chinese segments for whitespace-only names', () => {
+    const parsed = parseYouTubeFilename('她说 林俊杰 (歌词版).m4a')
+    assert.ok(parsed.queries.includes('她说'))
+    assert.ok(parsed.queries.includes('林俊杰'))
 })
 
 test('removes promotional and lyrics noise locally', () => {

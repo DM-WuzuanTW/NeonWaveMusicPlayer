@@ -92,11 +92,11 @@ function usefulBracket(value: string): boolean {
 
 function extractExplicit(raw: string): { title: string; artist: string } | null {
     const candidates = [...raw.matchAll(/《([^》]+)》/g)]
-        .map(match => ({ match, title: cleanTitle(match[1]) }))
+        .map(match => ({ match, title: cleanTitle(match[1].replace(/^\s*#/, '')) }))
         .filter(item => usefulBracket(item.title))
 
     const square = [...raw.matchAll(/(?:【|\[)([^】\]]+)(?:】|\])/g)]
-        .map(match => ({ match, title: cleanTitle(match[1]) }))
+        .map(match => ({ match, title: cleanTitle(match[1].replace(/^\s*#/, '')) }))
         .filter(item => usefulBracket(item.title))
     const selected = [...candidates, ...square]
         .sort((a, b) => (a.match.index || 0) - (b.match.index || 0))[0]
@@ -115,11 +115,20 @@ function extractExplicit(raw: string): { title: string; artist: string } | null 
 }
 
 function splitDash(raw: string): { left: string; right: string } | null {
-    const match = raw.match(/^(.{1,80}?)\s+-\s+(.+)$/)
-    if (!match) return null
-    const left = cleanTitle(match[1])
-    const right = cleanTitle(match[2].split(/[『「“#【[]/)[0])
-    return left && right ? { left, right } : null
+    for (let index = 1; index < raw.length - 1; index++) {
+        if (raw[index] !== '-') continue
+        const before = raw[index - 1]
+        const after = raw[index + 1]
+        const hasSpacing = /\s/.test(before) || /\s/.test(after)
+        // Preserve hyphens inside romanized names and channel identifiers.
+        if (!hasSpacing && /[A-Za-z0-9]/.test(before) && /[A-Za-z0-9]/.test(after)) continue
+
+        const left = cleanTitle(raw.slice(0, index))
+        const right = cleanTitle(raw.slice(index + 1).split(/[『「“#【[]/)[0])
+        if (!left || !right || isNoiseBlock(right)) continue
+        return { left, right }
+    }
+    return null
 }
 
 function looksLikeTitleFirst(left: string, right: string): boolean {
@@ -147,6 +156,10 @@ export function parseYouTubeFilename(input: string): ParsedMediaName {
         addQuery(queries, title, artist)
         addQuery(queries, artist, title)
         addQuery(queries, title)
+        // A bare "A - B" has no universal direction. Search both sides alone
+        // because some providers return no results for an otherwise-correct
+        // title + artist query (especially across Traditional/Simplified names).
+        addQuery(queries, artist)
         return { title, artist, queries, confidence: 'medium' }
     }
 
@@ -163,5 +176,7 @@ export function parseYouTubeFilename(input: string): ParsedMediaName {
         .replace(/\s+(?:mv|official).*$/i, '')
         .trim()
     addQuery(queries, cleaned)
+    const chineseSegments = cleaned.match(/[一-龥]{2,}/g) || []
+    chineseSegments.forEach(segment => addQuery(queries, segment))
     return { title: cleaned || stem, artist: '', queries, confidence: 'low' }
 }

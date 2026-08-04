@@ -404,11 +404,16 @@ const DANMAKU_STYLES = `
     display: flex;
     flex-wrap: wrap;
     justify-content: center;
+    gap: .12em .34em;
     font-size: clamp(36px, 6.4vw, 94px);
     font-weight: 950;
-    letter-spacing: -.055em;
+    letter-spacing: 0;
     line-height: 1.04;
     text-transform: none;
+}
+.kinetic-segment {
+    display: inline-flex;
+    white-space: nowrap;
 }
 .kinetic-char {
     display: inline-block;
@@ -493,6 +498,225 @@ const DANMAKU_STYLES = `
     font-weight: 700;
     letter-spacing: .06em;
 }
+
+.lyrics-presentation.mode-manga {
+    inset: 0;
+    display: grid;
+    place-items: center;
+    width: auto;
+    overflow: hidden;
+    isolation: isolate;
+}
+.manga-backdrop {
+    position: absolute;
+    inset: -28px;
+    z-index: -4;
+    background: #080808 center / cover no-repeat;
+    filter: grayscale(1) contrast(1.2) brightness(.3) blur(2px);
+    opacity: .62;
+    transform: scale(1.055);
+    animation: manga-backdrop-breathe 11s ease-in-out infinite alternate;
+}
+.manga-shade {
+    position: absolute;
+    inset: 0;
+    z-index: -3;
+    background:
+        linear-gradient(90deg, rgba(3,3,4,.72), rgba(7,7,8,.22) 48%, rgba(3,3,4,.72)),
+        linear-gradient(180deg, rgba(0,0,0,.36), transparent 28%, transparent 68%, rgba(0,0,0,.7));
+}
+.manga-copy {
+    position: relative;
+    display: grid;
+    width: min(92vw, 1240px);
+    min-height: min(58vh, 520px);
+    place-items: center;
+    padding: 72px 24px 58px;
+}
+.manga-ghost {
+    position: absolute;
+    inset: 50% 0 auto;
+    overflow: hidden;
+    color: rgba(196, 199, 204, .23);
+    font-family: "Microsoft JhengHei", "Noto Sans CJK TC", sans-serif;
+    font-size: clamp(86px, 15vw, 220px);
+    font-weight: 950;
+    letter-spacing: 0;
+    line-height: .88;
+    opacity: .78;
+    text-shadow: 0 18px 42px rgba(0,0,0,.9);
+    transform: translateY(-50%) scale(1.04);
+    white-space: nowrap;
+    animation: manga-ghost-in .7s cubic-bezier(.16,.8,.24,1) both;
+}
+.manga-line {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 92%;
+    color: rgba(245, 166, 99, .22);
+    font-family: "DFKai-SB", "BiauKai", "KaiTi", "Microsoft JhengHei", serif;
+    font-size: clamp(42px, 6.2vw, 88px);
+    font-weight: 800;
+    letter-spacing: 0;
+    line-height: 1.22;
+    text-shadow: 0 5px 12px rgba(0,0,0,.92);
+}
+.manga-line.long { font-size: clamp(34px, 5vw, 70px); }
+.manga-line.very-long { font-size: clamp(27px, 4vw, 56px); }
+.manga-token {
+    display: inline-block;
+    opacity: .24;
+    filter: blur(2px);
+    transform: translateY(8px) scale(.9);
+    transition:
+        color .32s ease,
+        opacity .32s ease,
+        filter .32s ease,
+        transform .42s cubic-bezier(.2,.8,.2,1),
+        text-shadow .32s ease;
+}
+.manga-token.space { min-width: .34em; }
+.manga-token.passed,
+.manga-token.current {
+    color: #f4a261;
+    opacity: 1;
+    filter: none;
+    transform: translateY(0) scale(1);
+    text-shadow: 0 5px 14px rgba(0,0,0,.95), 0 0 20px rgba(214, 104, 59, .22);
+}
+.manga-token.current {
+    color: #ffc078;
+    transform: translateY(-2px) scale(1.075);
+}
+.manga-meta {
+    position: absolute;
+    right: 24px;
+    bottom: 18px;
+    left: 24px;
+    display: flex;
+    justify-content: center;
+    overflow: hidden;
+    color: rgba(220,222,226,.5);
+    font-size: clamp(11px, 1.15vw, 15px);
+    font-weight: 650;
+    letter-spacing: 0;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.lyrics-presentation.mode-handwritten {
+    width: min(68vw, 900px);
+    text-align: left;
+    transform: translateY(-50%);
+}
+.lyrics-presentation.mode-handwritten.position-upper-left { top: 25%; left: clamp(30px, 7vw, 120px); }
+.lyrics-presentation.mode-handwritten.position-upper-right { top: 29%; right: clamp(42px, 8vw, 140px); }
+.lyrics-presentation.mode-handwritten.position-middle-left { top: 47%; left: clamp(52px, 12vw, 200px); }
+.lyrics-presentation.mode-handwritten.position-middle-right { top: 50%; right: clamp(48px, 12vw, 200px); }
+.lyrics-presentation.mode-handwritten.position-lower-left { top: 68%; left: clamp(34px, 8vw, 140px); }
+.lyrics-presentation.mode-handwritten.position-lower-right { top: 72%; right: clamp(44px, 10vw, 170px); }
+.lyrics-presentation.mode-handwritten.position-upper-right,
+.lyrics-presentation.mode-handwritten.position-middle-right,
+.lyrics-presentation.mode-handwritten.position-lower-right {
+    text-align: right;
+}
+.handwritten-guide {
+    position: absolute;
+    top: -14px;
+    left: 0;
+    width: clamp(86px, 12vw, 160px);
+    height: 2px;
+    border-radius: 2px;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.9));
+    filter: drop-shadow(0 0 5px rgba(255,255,255,.62));
+    transform-origin: right center;
+    animation: handwritten-guide-left .62s cubic-bezier(.18,.8,.22,1) both;
+}
+.handwritten-guide::after {
+    position: absolute;
+    top: 50%;
+    right: -3px;
+    width: 7px;
+    height: 7px;
+    border: 1px solid rgba(255,255,255,.9);
+    border-radius: 50%;
+    background: rgba(255,255,255,.72);
+    box-shadow: 0 0 12px rgba(255,255,255,.75);
+    content: "";
+    transform: translateY(-50%);
+}
+.position-upper-right .handwritten-guide,
+.position-middle-right .handwritten-guide,
+.position-lower-right .handwritten-guide {
+    right: 0;
+    left: auto;
+    background: linear-gradient(90deg, rgba(255,255,255,.9), transparent);
+    transform-origin: left center;
+    animation-name: handwritten-guide-right;
+}
+.position-upper-right .handwritten-guide::after,
+.position-middle-right .handwritten-guide::after,
+.position-lower-right .handwritten-guide::after {
+    right: auto;
+    left: -3px;
+}
+.handwritten-line {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: .08em .42em;
+    color: rgba(255,255,255,.96);
+    font-family: "DFKai-SB", "BiauKai", "KaiTi", "STKaiti", "Microsoft JhengHei", serif;
+    font-size: clamp(28px, 4vw, 56px);
+    font-weight: 700;
+    letter-spacing: 0;
+    line-height: 1.45;
+    text-wrap: balance;
+    text-shadow:
+        0 3px 8px rgba(0,0,0,.92),
+        0 0 18px rgba(0,0,0,.72),
+        0 0 7px rgba(255,255,255,.2);
+    animation: handwritten-line-float 6.4s ease-in-out infinite alternate;
+}
+.position-upper-right .handwritten-line,
+.position-middle-right .handwritten-line,
+.position-lower-right .handwritten-line { justify-content: flex-end; }
+.handwritten-segment {
+    display: inline-block;
+    opacity: 0;
+    animation: handwritten-segment-in .72s cubic-bezier(.22,.72,.24,1) forwards;
+    animation-delay: calc(.28s + var(--segment-index, 0) * 110ms);
+}
+.handwritten-segment:nth-child(2n) { --segment-drift: 9px; }
+.handwritten-segment:nth-child(2n + 1) { --segment-drift: -7px; }
+.handwritten-line.long { font-size: clamp(24px, 3.35vw, 47px); }
+.handwritten-line.very-long { font-size: clamp(20px, 2.75vw, 39px); }
+@keyframes manga-backdrop-breathe { from { transform: scale(1.055); } to { transform: scale(1.09); } }
+@keyframes manga-ghost-in {
+    from { opacity: 0; filter: blur(10px); transform: translateY(-46%) scale(.94); }
+    to { opacity: .78; filter: blur(0); transform: translateY(-50%) scale(1.04); }
+}
+@keyframes handwritten-segment-in {
+    from { opacity: 0; filter: blur(3px); transform: translate3d(var(--segment-drift, -9px), 8px, 0) scale(.975); }
+    to { opacity: 1; filter: blur(0); transform: translate3d(0, 0, 0) scale(1); }
+}
+@keyframes handwritten-line-float {
+    from { transform: translate3d(-5px, -3px, 0); }
+    to { transform: translate3d(8px, 6px, 0); }
+}
+@keyframes handwritten-guide-left {
+    0% { opacity: 0; transform: translate3d(-70px, 5px, 0) scaleX(.12); }
+    55% { opacity: 1; }
+    100% { opacity: .68; transform: translate3d(0, 0, 0) scaleX(1); }
+}
+@keyframes handwritten-guide-right {
+    0% { opacity: 0; transform: translate3d(70px, 5px, 0) scaleX(.12); }
+    55% { opacity: 1; }
+    100% { opacity: .68; transform: translate3d(0, 0, 0) scaleX(1); }
+}
 @keyframes kinetic-char-in {
     0% { opacity: 0; filter: blur(12px); transform: translate3d(var(--kinetic-x), 46px, -110px) rotate(var(--kinetic-r)) scale(.76); }
     62% { opacity: 1; filter: blur(0); transform: translate3d(0, -4px, 12px) rotate(0) scale(1.035); }
@@ -505,7 +729,7 @@ const DANMAKU_STYLES = `
 @keyframes rhythm-copy-in { 0% { opacity: 0; filter: blur(8px); transform: translate3d(8vw, 18px, 0) rotate(2.5deg) scale(1.13); } 70% { opacity: 1; filter: blur(0); transform: translate3d(-8px, 0, 0) rotate(-1.5deg) scale(.99); } 100% { opacity: 1; transform: rotate(-1.2deg) scale(1); } }
 
 @media (prefers-reduced-motion: reduce) {
-    .kinetic-char, .kinetic-kicker, .kinetic-ghost, .rhythm-vignette, .rhythm-slice, .mode-rhythm-cut .rhythm-copy { animation: none !important; opacity: 1; filter: none; transform: none; }
+    .kinetic-char, .kinetic-kicker, .kinetic-ghost, .rhythm-vignette, .rhythm-slice, .mode-rhythm-cut .rhythm-copy, .manga-backdrop, .manga-ghost, .handwritten-line, .handwritten-segment, .handwritten-guide { animation: none !important; opacity: 1; }
 }
 
 .lyrics-presentation.mode-panel {
@@ -703,6 +927,19 @@ const DANMAKU_STYLES = `
     .lyrics-phone { width: min(390px, 92vw); height: min(610px, 68vh); min-height: 430px; justify-self: center; border-radius: 38px; }
     .lyrics-phone-screen { border-radius: 30px; }
     .lyrics-presentation.mode-panel { text-align: left; }
+    .lyrics-presentation.mode-handwritten {
+        width: calc(100vw - 56px);
+    }
+    .lyrics-presentation.mode-handwritten.position-upper-left { top: 24%; left: 22px; }
+    .lyrics-presentation.mode-handwritten.position-upper-right { top: 29%; right: 22px; }
+    .lyrics-presentation.mode-handwritten.position-middle-left { top: 43%; left: 28px; }
+    .lyrics-presentation.mode-handwritten.position-middle-right { top: 49%; right: 28px; }
+    .lyrics-presentation.mode-handwritten.position-lower-left { top: 62%; left: 22px; }
+    .lyrics-presentation.mode-handwritten.position-lower-right { top: 69%; right: 22px; }
+    .handwritten-guide { width: clamp(72px, 27vw, 112px); }
+    .handwritten-line { font-size: clamp(25px, 7.4vw, 35px); }
+    .handwritten-line.long { font-size: clamp(21px, 6.1vw, 29px); }
+    .handwritten-line.very-long { font-size: clamp(18px, 5.2vw, 25px); }
     .lyrics-stage-body { display: flex; flex-direction: column; overflow-y: auto; }
     .lyrics-media-panel { flex: none; }
     .lyrics-media-frame { width: min(72vw, 330px); }
@@ -1205,6 +1442,41 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
     const activeLineDuration = Math.max(.8, activeLineEnd - activeLineStart)
     const activeLineProgress = Math.min(1, Math.max(0, (currentTime - activeLineStart) / activeLineDuration))
     const rhythmSegment = Math.min(3, Math.floor(activeLineProgress * 4))
+    const mangaTokens = activeIndex >= 0
+        ? (lyrics[activeIndex]?.text.match(/(\s+|[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*|.)/gu) || [])
+        : []
+    let mangaTokenCursor = 0
+    const timedMangaTokens = mangaTokens.map(text => ({
+        text,
+        timingIndex: /^\s+$/.test(text) ? -1 : mangaTokenCursor++
+    }))
+    const activeMangaToken = mangaTokenCursor > 0
+        ? Math.min(mangaTokenCursor - 1, Math.floor(activeLineProgress * mangaTokenCursor))
+        : -1
+    const activeLyricText = activeIndex >= 0 ? lyrics[activeIndex]?.text || '' : ''
+    const lyricSegments = activeLyricText.split(/\s+/u).filter(Boolean)
+    const lyricSegmentLengths = lyricSegments.map(segment => Math.max(1, Array.from(segment).length))
+    const lyricSegmentTotalLength = lyricSegmentLengths.reduce((total, length) => total + length, 0)
+    const lyricSegmentCharacterPosition = lyricSegmentTotalLength > 0
+        ? Math.min(lyricSegmentTotalLength - 1, Math.floor(activeLineProgress * lyricSegmentTotalLength))
+        : 0
+    let lyricSegmentLengthCursor = 0
+    const activeLyricSegmentIndex = lyricSegments.findIndex((_, index) => {
+        lyricSegmentLengthCursor += lyricSegmentLengths[index]
+        return lyricSegmentCharacterPosition < lyricSegmentLengthCursor
+    })
+    const visibleLyricSegmentIndex = Math.max(0, activeLyricSegmentIndex)
+    const activeLyricSegment = lyricSegments[visibleLyricSegmentIndex] || activeLyricText
+    const handwrittenPositions = [
+        'upper-left',
+        'upper-right',
+        'middle-left',
+        'middle-right',
+        'lower-left',
+        'lower-right'
+    ] as const
+    const handwrittenPositionIndex = Math.abs((activeIndex * 2) + visibleLyricSegmentIndex) % handwrittenPositions.length
+    const handwrittenPosition = handwrittenPositions[handwrittenPositionIndex]
     const formatClock = (value: number) => {
         const minutes = Math.floor(value / 60)
         const seconds = Math.floor(value % 60)
@@ -1311,20 +1583,21 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
 
             {presentation !== 'danmaku' && presentation !== 'panel' && activeIndex >= 0 && lyrics[activeIndex] && (
                 presentation === 'kinetic' ? (
-                    <div key={`kinetic-${activeIndex}`} className="lyrics-presentation mode-kinetic">
+                    <div key={`kinetic-${activeIndex}-${visibleLyricSegmentIndex}`} className="lyrics-presentation mode-kinetic">
                         <div className="kinetic-kicker">現在播放 · {trackArtist || 'NEONWAVE'}</div>
-                        <div className="kinetic-ghost" aria-hidden="true">{lyrics[activeIndex].text}</div>
-                        <div className="current-line" aria-label={lyrics[activeIndex].text}>
-                            {Array.from(lyrics[activeIndex].text).map((character, index) => (
-                                <span
-                                    key={`${character}-${index}`}
-                                    className="kinetic-char"
-                                    aria-hidden="true"
-                                    style={{ '--char-index': index } as React.CSSProperties}
-                                >
-                                    {character === ' ' ? '\u00a0' : character}
-                                </span>
-                            ))}
+                        <div className="kinetic-ghost" aria-hidden="true">{activeLyricSegment}</div>
+                        <div className="current-line" aria-label={activeLyricSegment}>
+                            <span className="kinetic-segment" aria-hidden="true">
+                                {Array.from(activeLyricSegment).map((character, characterIndex) => (
+                                    <span
+                                        key={`${character}-${characterIndex}`}
+                                        className="kinetic-char"
+                                        style={{ '--char-index': characterIndex } as React.CSSProperties}
+                                    >
+                                        {character}
+                                    </span>
+                                ))}
+                            </span>
                         </div>
                     </div>
                 ) : presentation === 'rhythm-cut' ? (
@@ -1335,6 +1608,49 @@ const LyricsOverlayView: React.FC<LyricsOverlayProps> = ({
                             <span className="rhythm-index">CUT {String(activeIndex + 1).padStart(2, '0')} · {Math.round(activeLineProgress * 100)}%</span>
                             <div className="current-line">{lyrics[activeIndex].text}</div>
                             {lyrics[activeIndex + 1] && <div className="rhythm-next">NEXT · {lyrics[activeIndex + 1].text}</div>}
+                        </div>
+                    </div>
+                ) : presentation === 'manga' ? (
+                    <div key={`manga-${activeIndex}`} className="lyrics-presentation mode-manga">
+                        <div
+                            className="manga-backdrop"
+                            style={trackArtwork ? { backgroundImage: `url(${trackArtwork})` } : undefined}
+                        />
+                        <div className="manga-shade" />
+                        <div className="manga-copy">
+                            <div className="manga-ghost" aria-hidden="true">{lyrics[activeIndex].text}</div>
+                            <div
+                                className={`manga-line${mangaTokenCursor > 16 ? ' very-long' : mangaTokenCursor > 10 ? ' long' : ''}`}
+                                aria-label={lyrics[activeIndex].text}
+                            >
+                                {timedMangaTokens.map((token, index) => {
+                                    const state = token.timingIndex < 0
+                                        ? 'space'
+                                        : token.timingIndex < activeMangaToken ? 'passed'
+                                            : token.timingIndex === activeMangaToken ? 'current' : ''
+                                    return (
+                                        <span key={`${token.text}-${index}`} className={`manga-token ${state}`} aria-hidden="true">
+                                            {/^\s+$/.test(token.text) ? '\u00a0' : token.text}
+                                        </span>
+                                    )
+                                })}
+                            </div>
+                            <div className="manga-meta">『 {trackTitle}{trackArtist ? ` / ${trackArtist}` : ''} 』</div>
+                        </div>
+                    </div>
+                ) : presentation === 'handwritten' ? (
+                    <div
+                        key={`handwritten-${activeIndex}-${visibleLyricSegmentIndex}`}
+                        className={`lyrics-presentation mode-handwritten position-${handwrittenPosition}`}
+                    >
+                        <div className="handwritten-guide" aria-hidden="true" />
+                        <div
+                            className={`handwritten-line${activeLyricSegment.length > 30 ? ' very-long' : activeLyricSegment.length > 18 ? ' long' : ''}`}
+                            aria-label={activeLyricSegment}
+                        >
+                            <span className="handwritten-segment" aria-hidden="true">
+                                {activeLyricSegment}
+                            </span>
                         </div>
                     </div>
                 ) : (
