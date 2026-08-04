@@ -724,6 +724,8 @@ export function SettingsView({ currentTrack }: SettingsViewProps) {
                             { id: 'subtitle', icon: '▱', title: '底部字幕', description: '像影片字幕一樣固定顯示於畫面底部' },
                             { id: 'panel', icon: '≡', title: '沉浸歌詞', description: '封面與完整歌詞清單並排顯示，自動跟隨目前段落' },
                             { id: 'kinetic', icon: '字', title: '動態字卡', description: '逐字分層進場、景深縮放與錯位轉場，適合情緒強烈的歌曲' },
+                            { id: 'manga', icon: '漫', title: '漫畫疊字', description: '灰階封面、巨型暗色底字與暖橙逐詞高亮，呈現漫畫剪輯感' },
+                            { id: 'handwritten', icon: '筆', title: '手寫旁白', description: '留白構圖與白色毛筆單行字，使用柔和淡入呈現' },
                             { id: 'rhythm-cut', icon: '◆', title: '節奏剪輯', description: '依每句時間切分脈衝、快速推進與閃切效果，呈現音樂剪輯感' }
                         ].map(mode => (
                             <button

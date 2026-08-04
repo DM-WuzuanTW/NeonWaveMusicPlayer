@@ -19,7 +19,7 @@ import { type LyricCandidate, lrclibGetExact, lrclibSearch, neteaseSearch, kugou
 import { type AiConfig, callAI, isAiEnabled } from './ai'
 import {
     cleanString, convertLyrics, extractChinese, getTitleMatchScore, hasChinese,
-    type LyricsLang, parseArtistTitle, parseChineseSongInfo, stripMarkdownFences
+    type LyricsLang, parseArtistTitle, parseChineseSongInfo, stripMarkdownFences, toSimplified
 } from './text'
 import { parseYouTubeFilename } from '../../src/utils/youtubeFilename'
 
@@ -99,7 +99,11 @@ function buildQueries(title: string, artist: string, filePath?: string): string[
     if (filePath) {
         const filename = path.basename(filePath, path.extname(filePath))
         const parsedFilename = parseYouTubeFilename(filename)
-        parsedFilename.queries.forEach(push)
+        parsedFilename.queries.forEach(query => {
+            push(query)
+            const simplified = toSimplified(query)
+            if (simplified !== query) push(simplified)
+        })
 
         // Variety-show pattern: "歌手《歌名》..."
         const varietyMatch = filename.match(/(.+?)《(.+?)》(.*)/)
@@ -361,10 +365,13 @@ export async function searchLyrics(req: LyricsRequest): Promise<string | null> {
             }
         }
         addExactPair(title, artist)
+        addExactPair(toSimplified(title), toSimplified(artist))
         if (parsedFilename) {
             addExactPair(parsedFilename.title, parsedFilename.artist)
+            addExactPair(toSimplified(parsedFilename.title), toSimplified(parsedFilename.artist))
             if (parsedFilename.confidence === 'medium') {
                 addExactPair(parsedFilename.artist, parsedFilename.title)
+                addExactPair(toSimplified(parsedFilename.artist), toSimplified(parsedFilename.title))
             }
         }
         const exactCandidates = (await Promise.all(
