@@ -1,7 +1,7 @@
 {
   "name": "neon-wave-music-player",
   "private": true,
-  "version": "7.0.3",
+  "version": "7.0.4",
   "description": "A modern, high-fidelity music player with 8D spatial audio effects.",
   "author": "wu-zuan",
   "license": "MIT",
