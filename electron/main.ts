@@ -8,6 +8,7 @@ import fsSync from 'node:fs'
 import os from 'node:os'
 import { autoUpdater } from 'electron-updater'
 import { spawn } from 'node:child_process'
+import extract from 'extract-zip'
 import * as mm from 'music-metadata'
 import { DiscordBotManager } from './discordBot'
 import { DiscordRPCManager } from './discordRPC'
@@ -1207,6 +1208,77 @@ while ($true) {
 
   const YtDlpWrap = createRequire(import.meta.url)('yt-dlp-wrap').default
 
+  let youtubeRuntimePromise: Promise<string[]> | null = null
+
+  const getDenoReleaseAsset = () => {
+    const arch = process.arch === 'arm64' ? 'aarch64' : process.arch === 'x64' ? 'x86_64' : null
+    if (!arch) return null
+
+    if (process.platform === 'win32') return `deno-${arch}-pc-windows-msvc.zip`
+    if (process.platform === 'darwin') return `deno-${arch}-apple-darwin.zip`
+    if (process.platform === 'linux') return `deno-${arch}-unknown-linux-gnu.zip`
+    return null
+  }
+
+  const downloadManagedDeno = async () => {
+    const asset = getDenoReleaseAsset()
+    if (!asset) throw new Error(`Unsupported Deno platform: ${process.platform}/${process.arch}`)
+
+    const installDir = path.join(app.getPath('userData'), 'deno-runtime')
+    const executablePath = path.join(installDir, process.platform === 'win32' ? 'deno.exe' : 'deno')
+    try {
+      await fs.access(executablePath)
+      return executablePath
+    } catch {
+      // Install below. The cached binary keeps subsequent launches offline.
+    }
+
+    const archivePath = path.join(installDir, `${asset}.download`)
+    const stagingDir = path.join(installDir, 'extracting')
+    const releaseUrl = `https://github.com/denoland/deno/releases/latest/download/${asset}`
+    await fs.mkdir(installDir, { recursive: true })
+    await fs.rm(stagingDir, { recursive: true, force: true })
+
+    const response = await net.fetch(releaseUrl, { redirect: 'follow' })
+    if (!response.ok || !response.body) {
+      throw new Error(`Deno download failed: HTTP ${response.status}`)
+    }
+
+    const file = fsSync.createWriteStream(archivePath)
+    const stream = Readable.fromWeb(response.body as never)
+    try {
+      await new Promise<void>((resolve, reject) => {
+        stream.on('error', reject)
+        file.on('error', reject)
+        file.on('finish', resolve)
+        stream.pipe(file)
+      })
+      await fs.mkdir(stagingDir, { recursive: true })
+      await extract(archivePath, { dir: stagingDir })
+      const extractedPath = path.join(stagingDir, process.platform === 'win32' ? 'deno.exe' : 'deno')
+      await fs.rename(extractedPath, executablePath)
+      if (process.platform !== 'win32') await fs.chmod(executablePath, 0o755)
+      return executablePath
+    } finally {
+      await fs.rm(archivePath, { force: true }).catch(() => undefined)
+      await fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined)
+    }
+  }
+
+  const getYoutubeRuntimeArgs = () => {
+    if (!youtubeRuntimePromise) {
+      youtubeRuntimePromise = downloadManagedDeno()
+        .then((denoPath) => ['--js-runtimes', `deno:${denoPath}`])
+        .catch((error) => {
+          // Node is not enabled by default in yt-dlp. It is a useful fallback on
+          // developer machines or systems where GitHub cannot be reached.
+          console.warn('[Main] Failed to prepare managed Deno; falling back to Node:', error)
+          return ['--js-runtimes', 'node']
+        })
+    }
+    return youtubeRuntimePromise
+  }
+
   
   const updateYtDlpInBackground = async () => {
     const binaryName = process.platform === 'win32' ? 'yt-dlp.exe' : 'yt-dlp'
@@ -1270,7 +1342,8 @@ while ($true) {
   ipcMain.handle('search:youtubePreview', async (_, url, title?: string, artist?: string) => {
     try {
       const yt = await getYtDlp()
-      const stdout = await yt.execPromise([url, '-J'])
+      const runtimeArgs = await getYoutubeRuntimeArgs()
+      const stdout = await yt.execPromise([url, ...runtimeArgs, '-J'])
       const dat = JSON.parse(stdout)
       let bestStart = 0
       let hasHeatmap = false
@@ -1409,11 +1482,13 @@ while ($true) {
       if (!filePath) return null
 
       // 3. Download
+      const runtimeArgs = await getYoutubeRuntimeArgs()
       return new Promise((resolve, reject) => {
         // Prepare args
         const fArg = format === 'mp4' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[ext=m4a]/best' : 'bestaudio[ext=m4a]'
         const args = [
           url,
+          ...runtimeArgs,
           '--no-playlist',
           '--force-overwrites',
           '-f', fArg,
@@ -1466,11 +1541,13 @@ while ($true) {
 
       let safeTitle = inputTitle.replace(/[\\/:*?"<>|]/g, '_').trim()
       const basePath = path.join(outputDir, safeTitle)
+      const runtimeArgs = await getYoutubeRuntimeArgs()
 
       return new Promise((resolve, reject) => {
         const fArg = format === 'mp4' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[ext=m4a]/best' : 'bestaudio[ext=m4a]'
         const args = [
           url,
+          ...runtimeArgs,
           '--no-playlist',
           '--force-overwrites',
           '-f', fArg
