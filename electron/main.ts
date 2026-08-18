@@ -10,6 +10,8 @@ import { autoUpdater } from 'electron-updater'
 import { spawn } from 'node:child_process'
 import extract from 'extract-zip'
 import * as mm from 'music-metadata'
+import type YtDlpWrapType from 'yt-dlp-wrap'
+import type { Progress as YtDlpProgress } from 'yt-dlp-wrap'
 import { DiscordBotManager } from './discordBot'
 import { DiscordRPCManager } from './discordRPC'
 import { searchArtistImage } from './utils/artistSearch'
@@ -1312,6 +1314,50 @@ while ($true) {
     return new YtDlpWrap(binaryPath)
   }
 
+  const getErrorMessage = (error: unknown) => error instanceof Error ? error.message : String(error)
+
+  const isYoutubeMediaForbidden = (error: unknown) =>
+    /(?:HTTP (?:Error )?403|403 Forbidden)/i.test(getErrorMessage(error))
+
+  const runYtDlp = (
+    yt: Pick<YtDlpWrapType, 'exec'>,
+    args: string[],
+    onProgress?: (progress: YtDlpProgress) => void,
+    onEvent?: (eventType: string, eventData: string) => void
+  ) => new Promise<void>((resolve, reject) => {
+    const eventEmitter = yt.exec(args)
+    if (onProgress) eventEmitter.on('progress', onProgress)
+    if (onEvent) eventEmitter.on('ytDlpEvent', onEvent)
+    eventEmitter.once('error', reject)
+    eventEmitter.once('close', () => resolve())
+  })
+
+  const runYoutubeDownload = async (
+    yt: Pick<YtDlpWrapType, 'exec'>,
+    primaryArgs: string[],
+    embeddedClientArgs: string[],
+    hlsFallbackArgs: string[],
+    onProgress?: (progress: YtDlpProgress) => void,
+    onEvent?: (eventType: string, eventData: string) => void
+  ) => {
+    try {
+      await runYtDlp(yt, primaryArgs, onProgress, onEvent)
+    } catch (error) {
+      if (!isYoutubeMediaForbidden(error)) throw error
+
+      // YouTube increasingly requires a PO token for direct googlevideo URLs.
+      // Try the token-free embedded client first. Videos that disable embedding
+      // can still fall back to HLS, which currently remains usable without POT.
+      console.warn('[Main] Direct YouTube media URL returned 403; retrying with embedded client')
+      try {
+        await runYtDlp(yt, embeddedClientArgs, onProgress, onEvent)
+      } catch (embeddedError) {
+        console.warn('[Main] Embedded YouTube client failed; retrying with HLS:', embeddedError)
+        await runYtDlp(yt, hlsFallbackArgs, onProgress, onEvent)
+      }
+    }
+  }
+
   
   updateYtDlpInBackground()
 
@@ -1483,10 +1529,9 @@ while ($true) {
 
       // 3. Download
       const runtimeArgs = await getYoutubeRuntimeArgs()
-      return new Promise((resolve, reject) => {
-        // Prepare args
-        const fArg = format === 'mp4' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[ext=m4a]/best' : 'bestaudio[ext=m4a]'
-        const args = [
+      // Prepare args
+      const fArg = format === 'mp4' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[ext=m4a]/best' : 'bestaudio[ext=m4a]'
+      const args = [
           url,
           ...runtimeArgs,
           '--no-playlist',
@@ -1496,34 +1541,44 @@ while ($true) {
           '--add-metadata',
           '--embed-thumbnail',
           '-o', filePath
-        ]
+      ]
 
-        // If we have explicit artist/title, force them into metadata
-        // Note: yt-dlp parse-metadata syntax: "STRING:%(field)s"
+      const hlsFormat = format === 'mp4'
+        ? 'best[protocol=m3u8_native][height<=1080]/best[protocol=m3u8_native]'
+        : 'best[protocol=m3u8_native][height<=360]/worst[protocol=m3u8_native]'
+      const hlsArgs = [
+        url,
+        ...runtimeArgs,
+        '--no-playlist',
+        '--force-overwrites',
+        '-f', hlsFormat,
+        '--ffmpeg-location', ffmpegPath,
+        '--add-metadata',
+        '--embed-thumbnail',
+        '-o', filePath
+      ]
+      if (format !== 'mp4') {
+        hlsArgs.push('--extract-audio', '--audio-format', 'm4a', '--audio-quality', '0')
+      }
+
+      // If we have explicit artist/title, force them into metadata.
+      // Note: yt-dlp parse-metadata syntax: "STRING:%(field)s"
+      for (const targetArgs of [args, hlsArgs]) {
         if (inputArtist) {
-          args.push('--parse-metadata', `${inputArtist}:%(artist)s`)
-          args.push('--parse-metadata', `${inputArtist}:%(album_artist)s`)
+          targetArgs.push('--parse-metadata', `${inputArtist}:%(artist)s`)
+          targetArgs.push('--parse-metadata', `${inputArtist}:%(album_artist)s`)
         }
-        if (inputTitle) {
-          args.push('--parse-metadata', `${inputTitle}:%(title)s`)
-        }
+        if (inputTitle) targetArgs.push('--parse-metadata', `${inputTitle}:%(title)s`)
+      }
+      const embeddedArgs = [...args, '--extractor-args', 'youtube:player_client=web_embedded']
 
-        const eventEmitter = yt.exec(args)
-
-        eventEmitter.on('progress', () => {
-          // Could send progress to renderer if we wanted
-          // win?.webContents.send('download-progress', progress)
-        })
-
-        eventEmitter.on('error', (err: any) => {
-          console.error("yt-dlp error:", err)
-          reject(new Error(`下載錯誤: ${err.message}`))
-        })
-
-        eventEmitter.on('close', () => {
-          resolve(filePath)
-        })
-      })
+      try {
+        await runYoutubeDownload(yt, args, embeddedArgs, hlsArgs)
+        return filePath
+      } catch (err) {
+        console.error('yt-dlp error:', err)
+        throw new Error(`下載錯誤: ${getErrorMessage(err)}`)
+      }
 
     } catch (e: any) {
       console.error("Download fatal error:", e)
@@ -1543,38 +1598,55 @@ while ($true) {
       const basePath = path.join(outputDir, safeTitle)
       const runtimeArgs = await getYoutubeRuntimeArgs()
 
-      return new Promise((resolve, reject) => {
-        const fArg = format === 'mp4' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[ext=m4a]/best' : 'bestaudio[ext=m4a]'
-        const args = [
+      const fArg = format === 'mp4' ? 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[ext=m4a]/best' : 'bestaudio[ext=m4a]'
+      const args = [
           url,
           ...runtimeArgs,
           '--no-playlist',
           '--force-overwrites',
           '-f', fArg
-        ]
+      ]
 
-        if (limitRate && limitRate !== '0') {
-          args.push('--limit-rate', limitRate)
-        }
+      if (limitRate && limitRate !== '0') args.push('--limit-rate', limitRate)
 
-        args.push(
-          '--ffmpeg-location', ffmpegPath,
-          '--add-metadata',
-          '--embed-thumbnail',
-          '-o', `${basePath}.%(ext)s`
-        )
+      args.push(
+        '--ffmpeg-location', ffmpegPath,
+        '--add-metadata',
+        '--embed-thumbnail',
+        '-o', `${basePath}.%(ext)s`
+      )
 
+      const hlsFormat = format === 'mp4'
+        ? 'best[protocol=m3u8_native][height<=1080]/best[protocol=m3u8_native]'
+        : 'best[protocol=m3u8_native][height<=360]/worst[protocol=m3u8_native]'
+      const hlsArgs = [
+        url,
+        ...runtimeArgs,
+        '--no-playlist',
+        '--force-overwrites',
+        '-f', hlsFormat
+      ]
+      if (limitRate && limitRate !== '0') hlsArgs.push('--limit-rate', limitRate)
+      hlsArgs.push(
+        '--ffmpeg-location', ffmpegPath,
+        '--add-metadata',
+        '--embed-thumbnail',
+        '-o', `${basePath}.%(ext)s`
+      )
+      if (format !== 'mp4') {
+        hlsArgs.push('--extract-audio', '--audio-format', 'm4a', '--audio-quality', '0')
+      }
+
+      for (const targetArgs of [args, hlsArgs]) {
         if (inputArtist) {
-          args.push('--parse-metadata', `${inputArtist}:%(artist)s`)
-          args.push('--parse-metadata', `${inputArtist}:%(album_artist)s`)
+          targetArgs.push('--parse-metadata', `${inputArtist}:%(artist)s`)
+          targetArgs.push('--parse-metadata', `${inputArtist}:%(album_artist)s`)
         }
-        if (inputTitle) {
-          args.push('--parse-metadata', `${inputTitle}:%(title)s`)
-        }
+        if (inputTitle) targetArgs.push('--parse-metadata', `${inputTitle}:%(title)s`)
+      }
+      const embeddedArgs = [...args, '--extractor-args', 'youtube:player_client=web_embedded']
 
-        const eventEmitter = yt.exec(args)
-
-        eventEmitter.on('progress', (progress: any) => {
+      const onProgress = (progress: YtDlpProgress) => {
           // Send progress updates to renderer
           if (win && progress && progress.currentSpeed) {
             win.webContents.send('download:progress', {
@@ -1583,24 +1655,20 @@ while ($true) {
               percent: progress.percent
             })
           }
-        })
+      }
 
-        // Fallback for manual parsing just in case
-        eventEmitter.on('ytDlpEvent', (eventType: string, eventData: string) => {
+      // Fallback for manual parsing just in case
+      const onEvent = (eventType: string, eventData: string) => {
           if (eventType === 'download' && eventData.includes('at')) {
             const speedMatch = eventData.match(/at\s+([0-9.]+[a-zA-Z]+\/s)/)
             if (speedMatch && win) {
               win.webContents.send('download:progress', { url: url, speed: speedMatch[1] })
             }
           }
-        })
+      }
 
-        eventEmitter.on('error', (err: any) => {
-          console.error("yt-dlp error:", err)
-          reject(new Error(`下載錯誤: ${err.message}`))
-        })
-
-        eventEmitter.on('close', async () => {
+      try {
+        await runYoutubeDownload(yt, args, embeddedArgs, hlsArgs, onProgress, onEvent)
           let finalPath = path.join(outputDir, `${safeTitle}.mp4`)
           try {
             await fs.access(finalPath)
@@ -1624,9 +1692,11 @@ while ($true) {
               console.error("Failed to set file timestamp:", e)
             }
           }
-          resolve(finalPath)
-        })
-      })
+        return finalPath
+      } catch (err) {
+        console.error('yt-dlp error:', err)
+        throw new Error(`下載錯誤: ${getErrorMessage(err)}`)
+      }
 
     } catch (e: any) {
       console.error("Download fatal error:", e)
